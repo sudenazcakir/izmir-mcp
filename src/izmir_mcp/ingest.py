@@ -17,7 +17,7 @@ from collections import defaultdict
 from typing import Any
 
 from .config import get_settings
-from .districts import DISTRICTS, nearest_district
+from .districts import DISTRICTS, find_district, nearest_district
 from .http import get_json
 from .models import BusLine, District, Pier, Station, Stop
 from .sources import pharmacy, transit_static
@@ -94,18 +94,37 @@ async def fetch_pharmacies() -> list[dict]:
     return out
 
 
+def _code(v: Any) -> str:
+    """ESHOT kodları ondalıklı geliyor: 41154.0 -> '41154'."""
+    if isinstance(v, float) and v.is_integer():
+        return str(int(v))
+    s = str(v).strip()
+    return s[:-2] if re.fullmatch(r"\d+\.0", s) else s
+
+
 def parse_eshot_stops(data: Any) -> list[Stop]:
-    """ESHOT DuraklariGetir cevabı. Alan adları belgelerde net değil, birkaç olası yazımı deniyoruz."""
+    """ESHOT DuraklariGetir cevabı.
+
+    Gerçek biçim (2026-11-11): DurakKodu (canlı API'deki durak numarası; `Id` iç kayıt numarası, kullanılmaz),
+    DurakAdi, X_Koordinati = enlem, y_koordinati = boylam (virgüllü), IlceAdi, AcikKapali (1 açık, 2 kapalı).
+    """
     out = []
     for r in _first_list(data):
-        sid = _pick(r, "DURAK_ID", "DurakId", "DurakKodu", "DURAK_KODU", "Id")
-        name = _pick(r, "DURAK_ADI", "DurakAdi", "Adi", "Ad")
+        sid = _pick(r, "DurakKodu", "DURAK_KODU", "DURAK_ID", "DurakId")
+        name = _pick(r, "DurakAdi", "DURAK_ADI", "Adi")
         if sid is None or not name:
+            continue
+        if _pick(r, "AcikKapali") == 2:  # kapalı durak
             continue
         lines_raw = _pick(r, "DURAKTAN_GECEN_HATLAR", "DuraktanGecenHatlar", "Hatlar") or []
         lines = lines_raw if isinstance(lines_raw, list) else [x for x in re.split(r"[^0-9A-Za-z]+", str(lines_raw)) if x]
-        out.append(Stop(id=str(sid), name=str(name).strip(), lat=parse_float(_pick(r, "ENLEM", "Enlem", "Lat")),
-                        lon=parse_float(_pick(r, "BOYLAM", "Boylam", "Lon", "Lng")), lines=[str(x) for x in lines]))
+        out.append(Stop(
+            id=_code(sid), name=str(name).strip(),
+            lat=parse_float(_pick(r, "X_Koordinati", "ENLEM", "Enlem", "Lat")),
+            lon=parse_float(_pick(r, "Y_Koordinati", "BOYLAM", "Boylam", "Lon", "Lng")),
+            lines=[_code(x) for x in lines],
+            district_name=_pick(r, "IlceAdi", "ILCE"),
+        ))
     return out
 
 
@@ -116,9 +135,9 @@ def parse_eshot_lines(data: Any) -> list[BusLine]:
         name = _pick(r, "HAT_ADI", "HatAdi", "Adi")
         if no is None or not name:
             continue
-        out.append(BusLine(number=str(no), name=str(name).strip(),
-                           start=_pick(r, "HAT_BASLANGIC", "GuzergahBaslangic", "Baslangic"),
-                           end=_pick(r, "HAT_BITIS", "GuzergahBitis", "Bitis")))
+        out.append(BusLine(number=_code(no), name=str(name).strip(),
+                           start=_pick(r, "HatBaslangic", "HAT_BASLANGIC", "Baslangic"),
+                           end=_pick(r, "HatBitis", "HAT_BITIS", "Bitis")))
     return out
 
 
@@ -146,6 +165,17 @@ async def fetch_lines() -> list[BusLine]:
 def _district_id(lat: float | None, lon: float | None) -> int | None:
     # Yaklaşık: en yakın ilçe merkezi. İlçe sınırı poligonu eklenince değiştirilecek.
     return nearest_district(lat, lon).id if lat and lon else None
+
+
+def _stop_district_id(s: Stop) -> int | None:
+    d = find_district(s.district_name) if s.district_name else None
+    return d.id if d else _district_id(s.lat, s.lon)
+
+
+# Tam liste geldiğinde, bu çalıştırmada güncellenmeyen (kaldırılmış ya da eski biçimde yazılmış) satırları sil.
+# now() işlem başladığı anı verir, yani bu işlemde yazılan her satırın updated_at'i now()'a eşittir.
+_PRUNE = {"stops": "stops", "lines": "bus_lines", "stations": "stations", "piers": "piers", "pharmacies": "pharmacies"}
+_PRUNE_MIN_ROWS = {"stops": 1000, "lines": 100, "stations": 20, "piers": 5, "pharmacies": 500}
 
 
 def write(conn, step: str, rows: list) -> None:
@@ -186,13 +216,17 @@ def write(conn, step: str, rows: list) -> None:
                    values (%s,%s,%s,%s,%s,%s,%s, now())
                    on conflict (id) do update set name=excluded.name, name_norm=excluded.name_norm, lat=excluded.lat,
                      lon=excluded.lon, district_id=excluded.district_id, lines=excluded.lines, updated_at=now()""",
-                [(s.id, s.name, norm(s.name), s.lat, s.lon, _district_id(s.lat, s.lon), s.lines) for s in rows])
+                [(s.id, s.name, norm(s.name), s.lat, s.lon, _stop_district_id(s), s.lines) for s in rows])
         elif step == "lines":
             cur.executemany(
                 """insert into bus_lines (number, name, start_name, end_name, updated_at) values (%s,%s,%s,%s, now())
                    on conflict (number) do update set name=excluded.name, start_name=excluded.start_name,
                      end_name=excluded.end_name, updated_at=now()""",
                 [(b.number, b.name, b.start, b.end) for b in rows])
+        if step in _PRUNE and len(rows) >= _PRUNE_MIN_ROWS[step]:
+            cur.execute(f"delete from {_PRUNE[step]} where updated_at < now()")  # noqa: S608 (sabit tablo adı)
+            if cur.rowcount:
+                log.info("%s: %d eski satır silindi", step, cur.rowcount)
     conn.commit()
 
 

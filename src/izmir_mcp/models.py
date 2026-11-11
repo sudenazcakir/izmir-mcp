@@ -118,6 +118,7 @@ class Stop(BaseModel):
     lat: float | None = None
     lon: float | None = None
     lines: list[str] = Field(default_factory=list)
+    district_name: str | None = None
 
 
 class BusLine(BaseModel):
