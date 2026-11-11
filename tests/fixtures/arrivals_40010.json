@@ -1,0 +1,46 @@
+[
+ {
+  "KalanDurakSayisi": 1,
+  "HattinYonu": 1,
+  "KoorY": "27,15527167",
+  "BisikletAparatliMi": false,
+  "KoorX": "38,39156667",
+  "EngelliMi": true,
+  "HatNumarasi": 875,
+  "HatAdi": "EVKA 1 - ŞİRİNYER AKT.",
+  "OtobusId": 11242
+ },
+ {
+  "KalanDurakSayisi": 1,
+  "HattinYonu": 1,
+  "KoorY": "27,15737333",
+  "BisikletAparatliMi": false,
+  "KoorX": "38,39125",
+  "EngelliMi": true,
+  "HatNumarasi": 374,
+  "HatAdi": "İZKENT - KONAK",
+  "OtobusId": 11616
+ },
+ {
+  "KalanDurakSayisi": 3,
+  "HattinYonu": 1,
+  "KoorY": "27,163535",
+  "BisikletAparatliMi": false,
+  "KoorX": "38,390535",
+  "EngelliMi": false,
+  "HatNumarasi": 285,
+  "HatAdi": "EVKA-1 - KONAK",
+  "OtobusId": 11373
+ },
+ {
+  "KalanDurakSayisi": 5,
+  "HattinYonu": 1,
+  "KoorY": "27,17134667",
+  "BisikletAparatliMi": false,
+  "KoorX": "38,388845",
+  "EngelliMi": true,
+  "HatNumarasi": 676,
+  "HatAdi": "TINAZTEPE - ŞİRİNYER AKT.",
+  "OtobusId": 11476
+ }
+]
