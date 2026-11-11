@@ -20,3 +20,18 @@ def test_parse_lines():
 def test_first_list():
     assert _first_list([{"a": 1}]) == [{"a": 1}]
     assert _first_list({"x": 1}) == []
+
+
+def test_bad_database_url_does_not_leak_password(monkeypatch, capsys):
+    import pytest
+
+    from izmir_mcp.config import get_settings
+    from izmir_mcp.ingest import main
+
+    get_settings.cache_clear()
+    monkeypatch.setattr(get_settings(), "database_url", "GizliSifre123.")
+    with pytest.raises(SystemExit) as exc:
+        main(["--only", "districts"])
+    assert "postgresql://" in str(exc.value)
+    assert "GizliSifre123" not in str(exc.value)
+    get_settings.cache_clear()

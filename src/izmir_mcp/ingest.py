@@ -214,7 +214,16 @@ async def run(steps: list[str], dry_run: bool) -> dict[str, str]:
         url = get_settings().database_url
         if not url:
             raise SystemExit("DATABASE_URL tanımlı değil (.env). Sadece denemek için --dry-run kullan.")
-        conn = psycopg.connect(url, connect_timeout=10)
+        url = url.strip().strip('"').strip("'")
+        if not url.startswith(("postgresql://", "postgres://")):
+            # Değeri yazdırmıyoruz: içinde şifre olabilir.
+            raise SystemExit("DATABASE_URL 'postgresql://' ile başlamalı. Supabase > Connect > Session pooler adresini "
+                             "kopyalayıp [YOUR-PASSWORD] yerine şifreni yaz.")
+        try:
+            conn = psycopg.connect(url, connect_timeout=10)
+        except psycopg.Error as e:
+            raise SystemExit(f"Veritabanına bağlanılamadı ({type(e).__name__}). DATABASE_URL'deki şifreyi ve "
+                             "Session pooler adresini kontrol et.") from None
     summary: dict[str, str] = {}
     try:
         for step in steps:  # districts önce: diğer tablolar ona referans veriyor
