@@ -210,6 +210,7 @@ async def run(steps: list[str], dry_run: bool) -> dict[str, str]:
     conn = None
     if not dry_run:
         import psycopg
+        import psycopg.conninfo
 
         url = get_settings().database_url
         if not url:
@@ -222,8 +223,10 @@ async def run(steps: list[str], dry_run: bool) -> dict[str, str]:
         try:
             conn = psycopg.connect(url, connect_timeout=10)
         except psycopg.Error as e:
-            raise SystemExit(f"Veritabanına bağlanılamadı ({type(e).__name__}). DATABASE_URL'deki şifreyi ve "
-                             "Session pooler adresini kontrol et.") from None
+            password = psycopg.conninfo.conninfo_to_dict(url).get("password") or ""
+            reason = str(e).replace(password, "****") if password else str(e)
+            raise SystemExit(f"Veritabanına bağlanılamadı: {reason.strip()}\n"
+                             "DATABASE_URL'deki şifreyi ve Session pooler adresini kontrol et.") from None
     summary: dict[str, str] = {}
     try:
         for step in steps:  # districts önce: diğer tablolar ona referans veriyor
