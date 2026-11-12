@@ -1,0 +1,707 @@
+{
+ "generated_at": "2026-11-11",
+ "source": "https://openapi.izmir.bel.tr",
+ "metro": [
+  {
+   "system": "metro",
+   "source_id": 12,
+   "name": "Evka - 3",
+   "lat": 38.4656,
+   "lon": 27.2289,
+   "seq": 1,
+   "active": true
+  },
+  {
+   "system": "metro",
+   "source_id": 11,
+   "name": "Ege Üniversitesi",
+   "lat": 38.46,
+   "lon": 27.2283,
+   "seq": 2,
+   "active": true
+  },
+  {
+   "system": "metro",
+   "source_id": 10,
+   "name": "Bornova",
+   "lat": 38.4586,
+   "lon": 27.2128,
+   "seq": 3,
+   "active": true
+  },
+  {
+   "system": "metro",
+   "source_id": 9,
+   "name": "Bölge",
+   "lat": 38.4547,
+   "lon": 27.2008,
+   "seq": 4,
+   "active": true
+  },
+  {
+   "system": "metro",
+   "source_id": 8,
+   "name": "Sanayi",
+   "lat": 38.4481,
+   "lon": 27.19,
+   "seq": 5,
+   "active": true
+  },
+  {
+   "system": "metro",
+   "source_id": 7,
+   "name": "Stadyum",
+   "lat": 38.4425,
+   "lon": 27.1808,
+   "seq": 6,
+   "active": true
+  },
+  {
+   "system": "metro",
+   "source_id": 6,
+   "name": "Halkapınar",
+   "lat": 38.435,
+   "lon": 27.1686,
+   "seq": 7,
+   "active": true
+  },
+  {
+   "system": "metro",
+   "source_id": 5,
+   "name": "Hilal",
+   "lat": 38.4275,
+   "lon": 27.1564,
+   "seq": 8,
+   "active": true
+  },
+  {
+   "system": "metro",
+   "source_id": 4,
+   "name": "Basmane",
+   "lat": 38.4227,
+   "lon": 27.1441,
+   "seq": 9,
+   "active": true
+  },
+  {
+   "system": "metro",
+   "source_id": 3,
+   "name": "Çankaya",
+   "lat": 38.4225,
+   "lon": 27.1369,
+   "seq": 10,
+   "active": true
+  },
+  {
+   "system": "metro",
+   "source_id": 2,
+   "name": "Konak",
+   "lat": 38.4175,
+   "lon": 27.1283,
+   "seq": 11,
+   "active": true
+  },
+  {
+   "system": "metro",
+   "source_id": 1,
+   "name": "Üçyol",
+   "lat": 38.406182,
+   "lon": 27.120883,
+   "seq": 12,
+   "active": true
+  },
+  {
+   "system": "metro",
+   "source_id": 13,
+   "name": "İzmirspor",
+   "lat": 38.4017,
+   "lon": 27.1103,
+   "seq": 13,
+   "active": true
+  },
+  {
+   "system": "metro",
+   "source_id": 14,
+   "name": "Hatay",
+   "lat": 38.4015,
+   "lon": 27.1031,
+   "seq": 14,
+   "active": true
+  },
+  {
+   "system": "metro",
+   "source_id": 15,
+   "name": "Göztepe",
+   "lat": 38.3965,
+   "lon": 27.0943,
+   "seq": 15,
+   "active": true
+  },
+  {
+   "system": "metro",
+   "source_id": 16,
+   "name": "Poligon",
+   "lat": 38.3916,
+   "lon": 27.0841,
+   "seq": 16,
+   "active": true
+  },
+  {
+   "system": "metro",
+   "source_id": 17,
+   "name": "Fahrettin Altay",
+   "lat": 38.3953,
+   "lon": 27.0698,
+   "seq": 17,
+   "active": true
+  },
+  {
+   "system": "metro",
+   "source_id": 18,
+   "name": "Balçova",
+   "lat": 38.3957,
+   "lon": 27.057,
+   "seq": 18,
+   "active": true
+  },
+  {
+   "system": "metro",
+   "source_id": 19,
+   "name": "Çağdaş",
+   "lat": 38.3944,
+   "lon": 27.0456,
+   "seq": 19,
+   "active": true
+  },
+  {
+   "system": "metro",
+   "source_id": 20,
+   "name": "Dokuz Eylül Üniversitesi Hastanesi",
+   "lat": 38.3942,
+   "lon": 27.0378,
+   "seq": 20,
+   "active": true
+  },
+  {
+   "system": "metro",
+   "source_id": 21,
+   "name": "Güzel Sanatlar",
+   "lat": 38.3924,
+   "lon": 27.0234,
+   "seq": 21,
+   "active": true
+  },
+  {
+   "system": "metro",
+   "source_id": 22,
+   "name": "Narlıdere İtfaiye",
+   "lat": 38.3937,
+   "lon": 27.015,
+   "seq": 22,
+   "active": true
+  },
+  {
+   "system": "metro",
+   "source_id": 23,
+   "name": "100. Yıl Cumhuriyet Şehitlik",
+   "lat": 38.3957,
+   "lon": 27.0003,
+   "seq": 23,
+   "active": true
+  },
+  {
+   "system": "metro",
+   "source_id": 24,
+   "name": "Kaymakamlık",
+   "lat": 38.3949,
+   "lon": 26.991,
+   "seq": 24,
+   "active": true
+  }
+ ],
+ "izban": [
+  {
+   "system": "izban",
+   "source_id": 1,
+   "name": "Aliağa",
+   "lat": 38.7889,
+   "lon": 26.9669,
+   "seq": 38,
+   "active": true
+  },
+  {
+   "system": "izban",
+   "source_id": 2,
+   "name": "Biçerova",
+   "lat": 38.7497,
+   "lon": 26.9603,
+   "seq": 37,
+   "active": true
+  },
+  {
+   "system": "izban",
+   "source_id": 3,
+   "name": "Hatundere",
+   "lat": 38.69,
+   "lon": 27.0175,
+   "seq": 36,
+   "active": true
+  },
+  {
+   "system": "izban",
+   "source_id": 4,
+   "name": "Menemen",
+   "lat": 38.6033,
+   "lon": 27.0767,
+   "seq": 35,
+   "active": true
+  },
+  {
+   "system": "izban",
+   "source_id": 5,
+   "name": "Egekent 2",
+   "lat": 38.5606,
+   "lon": 27.0444,
+   "seq": 34,
+   "active": true
+  },
+  {
+   "system": "izban",
+   "source_id": 6,
+   "name": "Ulukent",
+   "lat": 38.5486,
+   "lon": 27.0361,
+   "seq": 33,
+   "active": true
+  },
+  {
+   "system": "izban",
+   "source_id": 7,
+   "name": "Egekent",
+   "lat": 38.5072,
+   "lon": 27.0461,
+   "seq": 32,
+   "active": true
+  },
+  {
+   "system": "izban",
+   "source_id": 8,
+   "name": "Atasanayi",
+   "lat": 38.4989,
+   "lon": 27.0533,
+   "seq": 31,
+   "active": true
+  },
+  {
+   "system": "izban",
+   "source_id": 9,
+   "name": "Çiğli",
+   "lat": 38.4919,
+   "lon": 27.0631,
+   "seq": 30,
+   "active": true
+  },
+  {
+   "system": "izban",
+   "source_id": 10,
+   "name": "Mavişehir",
+   "lat": 38.4806,
+   "lon": 27.0844,
+   "seq": 29,
+   "active": true
+  },
+  {
+   "system": "izban",
+   "source_id": 11,
+   "name": "Şemikler",
+   "lat": 38.4742,
+   "lon": 27.0906,
+   "seq": 28,
+   "active": true
+  },
+  {
+   "system": "izban",
+   "source_id": 13,
+   "name": "Demirköprü",
+   "lat": 38.4678,
+   "lon": 27.0967,
+   "seq": 27,
+   "active": true
+  },
+  {
+   "system": "izban",
+   "source_id": 14,
+   "name": "Nergiz",
+   "lat": 38.4592,
+   "lon": 27.1053,
+   "seq": 26,
+   "active": true
+  },
+  {
+   "system": "izban",
+   "source_id": 15,
+   "name": "Karşıyaka",
+   "lat": 38.4578,
+   "lon": 27.1144,
+   "seq": 25,
+   "active": true
+  },
+  {
+   "system": "izban",
+   "source_id": 16,
+   "name": "Alaybey",
+   "lat": 38.4608,
+   "lon": 27.1217,
+   "seq": 24,
+   "active": true
+  },
+  {
+   "system": "izban",
+   "source_id": 17,
+   "name": "Naldöken",
+   "lat": 38.4647,
+   "lon": 27.1283,
+   "seq": 23,
+   "active": true
+  },
+  {
+   "system": "izban",
+   "source_id": 18,
+   "name": "Turan",
+   "lat": 38.4669,
+   "lon": 27.1497,
+   "seq": 22,
+   "active": true
+  },
+  {
+   "system": "izban",
+   "source_id": 19,
+   "name": "Bayraklı",
+   "lat": 38.4639,
+   "lon": 27.1644,
+   "seq": 21,
+   "active": true
+  },
+  {
+   "system": "izban",
+   "source_id": 20,
+   "name": "Salhane",
+   "lat": 38.4508,
+   "lon": 27.1722,
+   "seq": 20,
+   "active": true
+  },
+  {
+   "system": "izban",
+   "source_id": 21,
+   "name": "Halkapınar",
+   "lat": 38.4348,
+   "lon": 27.1686,
+   "seq": 19,
+   "active": true
+  },
+  {
+   "system": "izban",
+   "source_id": 23,
+   "name": "Kemer",
+   "lat": 38.4222,
+   "lon": 27.1558,
+   "seq": 16,
+   "active": true
+  },
+  {
+   "system": "izban",
+   "source_id": 24,
+   "name": "Şirinyer",
+   "lat": 38.3933,
+   "lon": 27.1469,
+   "seq": 15,
+   "active": true
+  },
+  {
+   "system": "izban",
+   "source_id": 25,
+   "name": "Koşu",
+   "lat": 38.3842,
+   "lon": 27.1475,
+   "seq": 14,
+   "active": true
+  },
+  {
+   "system": "izban",
+   "source_id": 26,
+   "name": "İnkılap",
+   "lat": 38.3689,
+   "lon": 27.1417,
+   "seq": 13,
+   "active": true
+  },
+  {
+   "system": "izban",
+   "source_id": 27,
+   "name": "Semt Garajı",
+   "lat": 38.3569,
+   "lon": 27.1367,
+   "seq": 12,
+   "active": true
+  },
+  {
+   "system": "izban",
+   "source_id": 28,
+   "name": "Esbaş",
+   "lat": 38.3361,
+   "lon": 27.1367,
+   "seq": 11,
+   "active": true
+  },
+  {
+   "system": "izban",
+   "source_id": 29,
+   "name": "Gaziemir",
+   "lat": 38.3264,
+   "lon": 27.14,
+   "seq": 10,
+   "active": true
+  },
+  {
+   "system": "izban",
+   "source_id": 30,
+   "name": "Sarnıç",
+   "lat": 38.3119,
+   "lon": 27.1447,
+   "seq": 9,
+   "active": true
+  },
+  {
+   "system": "izban",
+   "source_id": 31,
+   "name": "Adnan Menderes Havalimanı",
+   "lat": 38.2911,
+   "lon": 27.1481,
+   "seq": 8,
+   "active": true
+  },
+  {
+   "system": "izban",
+   "source_id": 32,
+   "name": "Cumaovası",
+   "lat": 38.2625,
+   "lon": 27.1631,
+   "seq": 7,
+   "active": true
+  },
+  {
+   "system": "izban",
+   "source_id": 34,
+   "name": "Alsancak",
+   "lat": 38.4395,
+   "lon": 27.1479,
+   "seq": 18,
+   "active": true
+  },
+  {
+   "system": "izban",
+   "source_id": 35,
+   "name": "Hilal",
+   "lat": 38.4255,
+   "lon": 27.1544,
+   "seq": 17,
+   "active": true
+  },
+  {
+   "system": "izban",
+   "source_id": 38,
+   "name": "Develi",
+   "lat": 38.2031,
+   "lon": 27.1681,
+   "seq": 6,
+   "active": true
+  },
+  {
+   "system": "izban",
+   "source_id": 40,
+   "name": "Tekeli",
+   "lat": 38.1811,
+   "lon": 27.1856,
+   "seq": 5,
+   "active": true
+  },
+  {
+   "system": "izban",
+   "source_id": 42,
+   "name": "Pancar",
+   "lat": 38.1975,
+   "lon": 27.2397,
+   "seq": 4,
+   "active": true
+  },
+  {
+   "system": "izban",
+   "source_id": 43,
+   "name": "Kuşçuburun",
+   "lat": 38.2094,
+   "lon": 27.3089,
+   "seq": 3,
+   "active": true
+  },
+  {
+   "system": "izban",
+   "source_id": 44,
+   "name": "Torbalı",
+   "lat": 38.1697,
+   "lon": 27.3472,
+   "seq": 2,
+   "active": true
+  },
+  {
+   "system": "izban",
+   "source_id": 45,
+   "name": "Tepeköy",
+   "lat": 38.1472,
+   "lon": 27.3613,
+   "seq": 1,
+   "active": true
+  },
+  {
+   "system": "izban",
+   "source_id": 47,
+   "name": "Sağlık",
+   "lat": 38.0846,
+   "lon": 27.4008,
+   "seq": 0,
+   "active": true
+  },
+  {
+   "system": "izban",
+   "source_id": 48,
+   "name": "Selçuk",
+   "lat": 37.9509,
+   "lon": 27.3731,
+   "seq": -2,
+   "active": true
+  },
+  {
+   "system": "izban",
+   "source_id": 50,
+   "name": "Belevi",
+   "lat": 38.0306,
+   "lon": 27.4331,
+   "seq": -1,
+   "active": true
+  }
+ ],
+ "piers": [
+  {
+   "id": 1,
+   "name": "Konak",
+   "lat": 38.418611111111,
+   "lon": 27.125833333333,
+   "car_ferry": false,
+   "active": true
+  },
+  {
+   "id": 2,
+   "name": "Karşıyaka",
+   "lat": 38.454722222222,
+   "lon": 27.120555555556,
+   "car_ferry": false,
+   "active": true
+  },
+  {
+   "id": 3,
+   "name": "Bostanlı",
+   "lat": 38.451944444445,
+   "lon": 27.097777777778,
+   "car_ferry": true,
+   "active": true
+  },
+  {
+   "id": 4,
+   "name": "Pasaport",
+   "lat": 38.428611111111,
+   "lon": 27.1325,
+   "car_ferry": false,
+   "active": true
+  },
+  {
+   "id": 5,
+   "name": "Alsancak",
+   "lat": 38.438888888889,
+   "lon": 27.140833333333,
+   "car_ferry": false,
+   "active": true
+  },
+  {
+   "id": 6,
+   "name": "Göztepe",
+   "lat": 38.399444444444,
+   "lon": 27.083333333333,
+   "car_ferry": false,
+   "active": true
+  },
+  {
+   "id": 7,
+   "name": "Üçkuyular",
+   "lat": 38.405555555556,
+   "lon": 27.070833333333,
+   "car_ferry": true,
+   "active": true
+  },
+  {
+   "id": 8,
+   "name": "Bayraklı",
+   "lat": 38.463611111111,
+   "lon": 27.161666666667,
+   "car_ferry": false,
+   "active": false
+  },
+  {
+   "id": 9,
+   "name": "Foça",
+   "lat": 38.66635,
+   "lon": 26.753369,
+   "car_ferry": false,
+   "active": false
+  },
+  {
+   "id": 10,
+   "name": "Yassıcaada",
+   "lat": 38.42637,
+   "lon": 26.798322,
+   "car_ferry": false,
+   "active": false
+  },
+  {
+   "id": 11,
+   "name": "Urla",
+   "lat": 38.363889,
+   "lon": 26.772222,
+   "car_ferry": false,
+   "active": true
+  },
+  {
+   "id": 12,
+   "name": "Güzelbahçe",
+   "lat": 38.3788,
+   "lon": 26.8925,
+   "car_ferry": false,
+   "active": true
+  },
+  {
+   "id": 13,
+   "name": "Mordoğan",
+   "lat": 38.5182,
+   "lon": 26.6267,
+   "car_ferry": false,
+   "active": true
+  },
+  {
+   "id": 1019,
+   "name": "Karantina",
+   "lat": 38.4141,
+   "lon": 27.12138,
+   "car_ferry": false,
+   "active": true
+  }
+ ]
+}
