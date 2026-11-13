@@ -1,7 +1,8 @@
 # İzmir Open Data MCP
 
-İzmir Büyükşehir Belediyesi açık verisini (ESHOT, Metro, İZBAN, İZDENİZ, eczaneler) Claude gibi
-yapay zekâ asistanlarına **MCP araçları** olarak sunan sunucu. Yaşar Üniversitesi, Güz 2026 dönem projesi
+İzmir Büyükşehir Belediyesi açık verisini (ESHOT, Metro, İZBAN, İZDENİZ, eczaneler) **MCP araçları**
+olarak sunan sunucu ve bu araçları kullanan bir **web sohbet sitesi**: kullanıcı siteye sorusunu yazar,
+Claude API araçlarımızı çağırarak cevaplar. Yaşar Üniversitesi, Güz 2026 dönem projesi
 (Proje 09). Ekip: Sude Naz Çakır, Bahar Dokur.
 
 > "Bornova Metro durağına sıradaki otobüs ne zaman?"  
@@ -110,16 +111,51 @@ terminalin PATH'ini görmediği için tam yol gerekiyor. Kaydedip Claude Desktop
 aç. Sohbet kutusundaki araç simgesinde `izmir` görünmeli. Sorun olursa log: macOS
 `~/Library/Logs/Claude/mcp-server-izmir.log`, Windows `%APPDATA%\Claude\logs\mcp-server-izmir.log`.
 
-## Uzak sunucu (3. hafta)
+## Web sitesi (sohbet sayfası)
 
-`uv run izmir-mcp --http` Streamable HTTP ile `/mcp` yolunda çalışır (`PORT` ortam değişkeni). Render'a
-Docker ile kurulum ve API anahtarı doğrulaması 3. haftada eklenecek.
+Kullanıcılar hiçbir şey kurmadan sitedeki sohbet kutusuna sorusunu yazar. Akış:
+
+```
+tarayıcı ──► /api/chat ──► Claude API (Haiku 5.5, MCP connector) ──► /mcp (bu sunucu) ──► İzmir açık veri
+```
+
+Sayfa, `/api/chat` ve MCP sunucusu tek uygulamada (`izmir-mcp-web`), Render'da tek servis olarak çalışır:
+
+| Yol | Ne |
+|---|---|
+| `/` | sohbet sayfası (`src/izmir_mcp/static/index.html`) |
+| `/api/chat` | konuşmayı Claude API'ye gönderir, cevabı ve kullanılan araçları döndürür |
+| `/mcp` | MCP sunucusu (Streamable HTTP). `MCP_API_KEY` ayarlıysa `Authorization: Bearer` ister |
+| `/health` | sağlık kontrolü; demodan önce açıp Render'ı uyandır |
+
+Claude API, araçları çağırmak için sunucumuza **internetten** bağlanır. Bu yüzden sohbet uçtan uca yalnız
+herkese açık bir adreste (Render) çalışır. Yerelde `uv run izmir-mcp-web` ile sayfa ve `/mcp` açılır, ama
+`PUBLIC_BASE_URL` olmadan `/api/chat` "yapılandırılmadı" der.
+
+Güvenlik ve maliyet: `ANTHROPIC_API_KEY` yalnız sunucuda (Render ortam değişkeni) durur, tarayıcıya gitmez.
+IP başına 10 dakikada `CHAT_RATE_LIMIT` soru (varsayılan 20), soru başına en fazla 1000 karakter. Anthropic
+Console'da aylık harcama sınırı $5. Haiku 5.5 ile bir soru yaklaşık $0.001–0.002.
+
+### Render'a kurulum
+
+1. Render'da **New > Blueprint**, bu repoyu seç. `render.yaml` servisi (Frankfurt, ücretsiz) kendisi tanımlar.
+2. Sorulan gizli değerleri gir: `ANTHROPIC_API_KEY`, `DATABASE_URL` (Supabase Session pooler),
+   `MCP_API_KEY` (uzun rastgele bir metin, ör. `openssl rand -hex 32`). `PUBLIC_BASE_URL` gerekmez,
+   Render adresi `RENDER_EXTERNAL_URL` olarak kendisi verir.
+3. Kurulum bitince `https://<servis>.onrender.com/health` → `"chat": true` görmelisin, sonra ana sayfadan soru sor.
+
+Claude Desktop'tan canlı sunucuya bağlanmak (yedek demo):
+`npx mcp-remote https://<servis>.onrender.com/mcp --header "Authorization: Bearer <MCP_API_KEY>"`
+
+Yalnız MCP sunucusu (sayfasız) gerekirse: `uv run izmir-mcp --http` (`/mcp`, `PORT`).
 
 ## Klasör yapısı
 
 ```
 src/izmir_mcp/
   server.py            MCP sunucusu, araç tanımları
+  web.py               web uygulaması: sohbet sayfası + /api/chat + /mcp + /health
+  static/index.html    sohbet sayfası
   tools.py             araçların iş mantığı
   models.py            ortak Pydantic modelleri (Arrival, Pharmacy, AirReading, Meta, SourceError…)
   http.py, cache.py    zaman aşımı + tekrar deneme, TTL önbellek + son iyi değer (2. haftada Redis)
