@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>İzmir Asistanı</title>
+<meta name="description" content="İzmir'de otobüs, nöbetçi eczane ve şehir bilgisini açık veriyle cevaplayan asistan.">
+<style>
+  :root {
+    --bg: #f4f7f8; --surface: #ffffff; --fg: #13232a; --muted: #5a6e76; --line: #d8e2e6;
+    --accent: #0a6a86; --accent-ink: #ffffff; --accent-soft: #e1eff4; --error: #a23a2a;
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0f171b; --surface: #17232a; --fg: #e3ecef; --muted: #94a9b1; --line: #2a3a42;
+      --accent: #4fb6d3; --accent-ink: #062530; --accent-soft: #163640; --error: #f08a74;
+      color-scheme: dark;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    margin: 0; background: var(--bg); color: var(--fg);
+    font: 16px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    display: flex; flex-direction: column;
+  }
+  header {
+    padding: 14px max(16px, env(safe-area-inset-left)) 12px;
+    border-bottom: 1px solid var(--line); background: var(--surface);
+  }
+  header .wrap { max-width: 760px; margin: 0 auto; }
+  header h1 { margin: 0; font-size: 18px; }
+  header p { margin: 2px 0 0; color: var(--muted); font-size: 13.5px; }
+  main { flex: 1; overflow-y: auto; }
+  .log { max-width: 760px; margin: 0 auto; padding: 20px 16px 8px; display: grid; gap: 14px; }
+  .msg { max-width: 88%; padding: 10px 14px; border-radius: 14px; white-space: pre-wrap; word-wrap: break-word; }
+  .msg.user { justify-self: end; background: var(--accent); color: var(--accent-ink); border-bottom-right-radius: 4px; }
+  .msg.bot { justify-self: start; background: var(--surface); border: 1px solid var(--line); border-bottom-left-radius: 4px; }
+  .msg.bot.error { color: var(--error); }
+  .tools { margin-top: 8px; display: flex; flex-wrap: wrap; gap: 6px; }
+  .tools span { font-size: 12px; color: var(--muted); background: var(--accent-soft); padding: 2px 8px; border-radius: 999px; }
+  .welcome { color: var(--muted); display: grid; gap: 12px; padding-top: 12px; }
+  .welcome h2 { margin: 0; color: var(--fg); font-size: 22px; }
+  .examples { display: flex; flex-wrap: wrap; gap: 8px; }
+  .examples button {
+    font: inherit; font-size: 14.5px; text-align: left; cursor: pointer; color: var(--fg);
+    background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 8px 12px;
+  }
+  .examples button:hover { border-color: var(--accent); }
+  .dots span { display: inline-block; width: 7px; height: 7px; margin-right: 4px; border-radius: 50%;
+    background: var(--muted); animation: blink 1.2s infinite both; }
+  .dots span:nth-child(2) { animation-delay: .2s; } .dots span:nth-child(3) { animation-delay: .4s; }
+  @keyframes blink { 0%, 80%, 100% { opacity: .25; } 40% { opacity: 1; } }
+  form {
+    border-top: 1px solid var(--line); background: var(--surface);
+    padding: 10px max(16px, env(safe-area-inset-left)) max(10px, env(safe-area-inset-bottom));
+  }
+  .bar { max-width: 760px; margin: 0 auto; display: flex; gap: 8px; }
+  textarea {
+    flex: 1; resize: none; font: inherit; color: var(--fg); background: var(--bg);
+    border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; max-height: 140px;
+  }
+  textarea:focus-visible, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .send {
+    font: inherit; font-weight: 600; border: 0; border-radius: 12px; padding: 0 18px; cursor: pointer;
+    background: var(--accent); color: var(--accent-ink);
+  }
+  .send:disabled { opacity: .5; cursor: default; }
+  .foot { max-width: 760px; margin: 6px auto 0; font-size: 12px; color: var(--muted); }
+</style>
+</head>
+<body>
+<header>
+  <div class="wrap">
+    <h1>İzmir Asistanı</h1>
+    <p>İzmir Büyükşehir açık verisiyle otobüs ve nöbetçi eczane bilgisi</p>
+  </div>
+</header>
+<main id="scroll">
+  <div class="log" id="log">
+    <div class="welcome" id="welcome">
+      <h2>Merhaba, ne öğrenmek istersin?</h2>
+      <div class="examples">
+        <button type="button">Bornova Metro durağına sıradaki otobüs ne zaman?</button>
+        <button type="button">Buca'da bugün nöbetçi eczane hangisi?</button>
+        <button type="button">Konak İskele'ye hangi otobüsler yaklaşıyor?</button>
+      </div>
+    </div>
+  </div>
+</main>
+<form id="form">
+  <div class="bar">
+    <textarea id="q" rows="1" maxlength="1000" placeholder="Sorunu yaz…" aria-label="Soru"></textarea>
+    <button class="send" id="send" type="submit">Sor</button>
+  </div>
+  <div class="foot">Varış süreleri tahminidir. Cevaplar yapay zekâ tarafından üretilir.</div>
+</form>
+<script>
+(() => {
+  const TOOL_NAMES = { get_stop_arrivals: "Otobüs varışları", find_pharmacies: "Eczaneler" };
+  const log = document.getElementById("log"), scroll = document.getElementById("scroll");
+  const form = document.getElementById("form"), q = document.getElementById("q"), send = document.getElementById("send");
+  const history = [];
+  let busy = false;
+
+  const esc = s => s.replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  // Basit biçim: **kalın**, satır sonları korunur (white-space: pre-wrap).
+  const fmt = s => esc(s).replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>").replace(/^#{1,4} /gm, "");
+
+  function add(role, html, extra) {
+    document.getElementById("welcome")?.remove();
+    const el = document.createElement("div");
+    el.className = "msg " + role + (extra ? " " + extra : "");
+    el.innerHTML = html;
+    log.appendChild(el);
+    scroll.scrollTop = scroll.scrollHeight;
+    return el;
+  }
+
+  async function ask(text) {
+    if (busy || !text.trim()) return;
+    busy = true; send.disabled = true;
+    history.push({ role: "user", content: text.trim() });
+    add("user", esc(text.trim()));
+    const wait = add("bot", '<span class="dots" aria-label="Cevap yazılıyor"><span></span><span></span><span></span></span>');
+    try {
+      const res = await fetch("/api/chat", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ messages: history.slice(-12) }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Bir sorun oluştu, tekrar dener misin?");
+      history.push({ role: "assistant", content: data.answer });
+      const tools = [...new Set(data.tools || [])].map(t => "<span>" + esc(TOOL_NAMES[t] || t) + "</span>").join("");
+      wait.innerHTML = fmt(data.answer) + (tools ? '<div class="tools">' + tools + "</div>" : "");
+    } catch (e) {
+      history.pop();
+      wait.classList.add("error");
+      wait.textContent = e.message === "Failed to fetch" ? "Sunucuya ulaşılamadı. İnternet bağlantını kontrol et." : e.message;
+    } finally {
+      busy = false; send.disabled = false; scroll.scrollTop = scroll.scrollHeight; q.focus();
+    }
+  }
+
+  form.addEventListener("submit", e => { e.preventDefault(); const t = q.value; q.value = ""; q.style.height = ""; ask(t); });
+  q.addEventListener("keydown", e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); form.requestSubmit(); } });
+  q.addEventListener("input", () => { q.style.height = ""; q.style.height = Math.min(q.scrollHeight, 140) + "px"; });
+  document.querySelectorAll(".examples button").forEach(b => b.addEventListener("click", () => ask(b.textContent)));
+})();
+</script>
+</body>
+</html>
