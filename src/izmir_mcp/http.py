@@ -60,12 +60,15 @@ def _circuit_open_error(source: str) -> SourceError:
 
 
 async def get_json(url: str, *, source: str, params: dict[str, Any] | None = None,
-                   retries: int | None = None) -> Any:
-    """Kaynağa istek atar; devre kesici açıksa hiç denemeden CIRCUIT_OPEN hatası verir."""
+                   retries: int | None = None, as_text: bool = False) -> Any:
+    """Kaynağa istek atar; devre kesici açıksa hiç denemeden CIRCUIT_OPEN hatası verir.
+
+    as_text=True: JSON yerine metin döndürür (CSV dosyaları için; UTF-8, olmazsa Windows-1254).
+    """
     if not breakers.allow(source):
         raise SourceFailure(_circuit_open_error(source))
     try:
-        data = await _get_json(url, source=source, params=params, retries=retries)
+        data = await _get_json(url, source=source, params=params, retries=retries, as_text=as_text)
     except SourceFailure as f:
         if f.error.code == ErrorCode.NOT_FOUND:
             breakers.record_success(source)  # kaynak ayakta, sadece kayıt yok
@@ -79,7 +82,15 @@ async def get_json(url: str, *, source: str, params: dict[str, Any] | None = Non
     return data
 
 
-async def _get_json(url: str, *, source: str, params: dict[str, Any] | None, retries: int | None) -> Any:
+def _decode_text(content: bytes) -> str:
+    try:
+        return content.decode("utf-8-sig")
+    except UnicodeDecodeError:
+        return content.decode("cp1254")  # belediye dosyalarında eski Türkçe kodlama da görülüyor
+
+
+async def _get_json(url: str, *, source: str, params: dict[str, Any] | None, retries: int | None,
+                    as_text: bool = False) -> Any:
     retries = get_settings().http_retries if retries is None else retries
     last_exc: Exception | None = None
     for attempt in range(retries + 1):
@@ -91,7 +102,7 @@ async def _get_json(url: str, *, source: str, params: dict[str, Any] | None, ret
                 raise SourceFailure(SourceError(code=ErrorCode.NOT_FOUND, source=source,
                                                 message=f"{source} bu kayıt için veri döndürmedi (404)."))
             r.raise_for_status()
-            return r.json()
+            return _decode_text(r.content) if as_text else r.json()
         except SourceFailure:
             raise
         except httpx.TimeoutException as e:
@@ -112,15 +123,15 @@ async def _get_json(url: str, *, source: str, params: dict[str, Any] | None, ret
     )) from last_exc
 
 
-async def get_json_cached(url: str, *, source: str, ttl: float, params: dict[str, Any] | None = None
-                          ) -> tuple[Any, bool, bool]:
+async def get_json_cached(url: str, *, source: str, ttl: float, params: dict[str, Any] | None = None,
+                          as_text: bool = False) -> tuple[Any, bool, bool]:
     """(veri, önbellekten_mi, bayat_mi). Kaynak çökerse son iyi veriye düşer (bellek, sonra Redis)."""
     key = f"{url}?{sorted((params or {}).items())}"
     hit = await store.get(key)
     if hit is not None:
         return hit, True, False
     try:
-        data = await get_json(url, source=source, params=params)
+        data = await get_json(url, source=source, params=params, as_text=as_text)
     except SourceFailure:
         stale = await store.get_stale(key)
         if stale is not None:

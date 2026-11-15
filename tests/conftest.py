@@ -31,6 +31,8 @@ class FakeIzmir:
                 if isinstance(result, Exception):
                     raise result
                 status, body = result
+                if isinstance(body, str):  # CSV gibi düz metin dosyaları
+                    return httpx.Response(status, content=body.encode("utf-8"), headers={"content-type": "text/csv"})
                 return httpx.Response(status, json=body)
         return httpx.Response(404, json={"Message": "not found"})
 

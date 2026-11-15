@@ -14,13 +14,14 @@ from mcp.types import ToolAnnotations
 from pydantic import Field
 
 from . import tools
-from .models import AirQualityResult, PharmacyResult, SourceStatusResult, StopArrivals
+from .models import AirQualityResult, AnnouncementsResult, PharmacyResult, SourceStatusResult, StopArrivals
 
 mcp = MCPServer(
     name="izmir-open-data",
     title="İzmir Açık Veri",
     instructions=(
-        "İzmir Büyükşehir Belediyesi açık verisi: ESHOT otobüs varışları, nöbetçi eczaneler, hava kalitesi. "
+        "İzmir Büyükşehir Belediyesi açık verisi: ESHOT otobüs varışları ve hat duyuruları, nöbetçi eczaneler, "
+        "hava kalitesi. "
         "Varış süreleri tahminidir (ESHOT dakika vermez). Bir araç `error` döndürürse kullanıcıya "
         "kaynağın şu an cevap vermediğini açıkça söyle, veri uydurma. `circuit_open` hatası, kaynağın art arda "
         "hata verdiği için bir süre denenmediği anlamına gelir. "
@@ -85,6 +86,25 @@ async def get_air_quality(
     hours: Annotated[int, Field(ge=0, le=36, description="Kaç saatlik tahmin listelensin")] = 12,
 ) -> AirQualityResult:
     return await tools.get_air_quality(district, lat, lon, hours)
+
+
+@mcp.tool(
+    title="ESHOT hat duyuruları",
+    description=(
+        "ESHOT otobüs hatlarının güncel duyurularını verir: geçici güzergah değişiklikleri, etkinlik nedeniyle "
+        "değişiklikler gibi başlangıç/bitiş tarihli duyurular, ve hattın kalıcı notları (ör. ring hat, olumsuz "
+        "havada uğranmayan duraklar). `line` hat numarasıdır (ör. '302'); verilmezse tüm hatların şu an geçerli "
+        "duyuruları listelenir. Bir hatta yolculuk planlayan kullanıcıya otobüs varışlarıyla birlikte kontrol et. "
+        "Duyurularda yalnızca başlık var; ayrıntı için kullanıcıyı ESHOT'a yönlendir."
+    ),
+    annotations=READ_ONLY,
+)
+async def get_announcements(
+    line: Annotated[str | None, Field(description="ESHOT hat numarası, ör. '302' (isteğe bağlı)")] = None,
+    include_upcoming: Annotated[bool, Field(description="İleri tarihli duyuruları da göster")] = True,
+    limit: Annotated[int, Field(ge=1, le=50, description="En fazla kaç duyuru listelensin")] = 20,
+) -> AnnouncementsResult:
+    return await tools.get_announcements(line, include_upcoming, limit)
 
 
 @mcp.tool(

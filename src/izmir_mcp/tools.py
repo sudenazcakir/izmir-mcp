@@ -13,9 +13,12 @@ from .http import SourceFailure, get_json
 from .models import (
     AirQualityResult,
     AirReading,
+    Announcement,
+    AnnouncementsResult,
     Arrival,
     ErrorCode,
     HourlyAqi,
+    LineNote,
     Meta,
     Pharmacy,
     PharmacyResult,
@@ -25,7 +28,7 @@ from .models import (
     StopArrivals,
     StopRef,
 )
-from .sources import air, eshot, pharmacy, transit_static
+from .sources import air, announcements, eshot, pharmacy, transit_static
 from .text import norm, parse_float, strip_stop_words
 
 MAX_STOPS_PER_QUERY = 10  # Bornova Metro gibi aktarma merkezlerinde aynı adlı 10 peron var
@@ -363,6 +366,95 @@ async def get_air_quality(district: str | None = None, lat: float | None = None,
     return result
 
 
+# ---------------------------------------------------------------- get_announcements
+
+
+async def get_announcements(line: str | None = None, include_upcoming: bool = True,
+                            limit: int = 20) -> AnnouncementsResult:
+    started = _now()
+    meta = Meta(sources=[announcements.SOURCE_CSV, announcements.SOURCE_LINES], fetched_at=started)
+    code = announcements.line_code(line) if line else None
+    if line and code is None:
+        return AnnouncementsResult(line=line, meta=meta, error=SourceError(
+            code=ErrorCode.INVALID_INPUT, message=f"'{line}' bir hat numarası değil.",
+            hint="Hat numarasını rakamla yazın, ör. 302. Hat vermezseniz tüm güncel duyurular listelenir."))
+
+    csv_res, lines_res = await asyncio.gather(
+        announcements.csv_announcements(),
+        announcements.lines() if code else _none(),
+        return_exceptions=True,
+    )
+    for r in (csv_res, lines_res):
+        if isinstance(r, BaseException) and not isinstance(r, SourceFailure):
+            raise r
+
+    result = AnnouncementsResult(line=code, meta=meta)
+    notes, stale, failures = meta.notes, False, []
+
+    line_info = None
+    if code:
+        if isinstance(lines_res, SourceFailure):
+            failures.append(lines_res)
+            notes.append("ESHOT hat bilgileri şu an alınamıyor; kalıcı hat notları gösterilemiyor.")
+        else:
+            info, _c, s_ = lines_res
+            stale |= s_
+            line_info = info.get(code)
+            if line_info:
+                result.line_name = line_info["name"]
+                result.line_notes = [
+                    LineNote(line=code, note=n, source=announcements.SOURCE_LINES) for n in line_info["notes"]]
+
+    if isinstance(csv_res, SourceFailure):
+        failures.append(csv_res)
+        notes.append("ESHOT hat duyuruları dosyası şu an alınamıyor; güncel duyurular gösterilemiyor.")
+    else:
+        rows, _c, s_ = csv_res
+        stale |= s_
+        now = _now()
+        grouped: dict[tuple, dict] = {}
+        for r in rows:
+            if r["ends_at"] is not None and r["ends_at"] < now:
+                continue  # süresi bitmiş
+            status = "upcoming" if r["starts_at"] > now else "active"
+            if status == "upcoming" and not include_upcoming:
+                continue
+            key = (r["title"], r["starts_at"], r["ends_at"])
+            g = grouped.setdefault(key, {**r, "lines": [], "status": status})
+            if r["line"] not in g["lines"]:
+                g["lines"].append(r["line"])
+        items = [g for g in grouped.values() if code is None or code in g["lines"]]
+        items.sort(key=lambda g: (g["status"] != "active", -g["starts_at"].timestamp() if g["status"] == "active"
+                                  else g["starts_at"].timestamp()))
+        result.total = len(items)
+        result.announcements = [
+            Announcement(title=g["title"], lines=sorted(g["lines"], key=lambda x: (len(x), x)),
+                         starts_at=g["starts_at"], ends_at=g["ends_at"], status=g["status"],
+                         source=announcements.SOURCE_CSV)
+            for g in items[: max(1, limit)]
+        ]
+        if result.total > len(result.announcements):
+            notes.append(f"{result.total} duyurudan ilk {len(result.announcements)} tanesi gösteriliyor.")
+        if code and not items:
+            notes.append(f"{code} numaralı hat için şu an geçerli bir duyuru yok.")
+
+    if code and line_info is None and not isinstance(lines_res, SourceFailure) and not result.announcements:
+        result.error = SourceError(
+            code=ErrorCode.NOT_FOUND, message=f"{code} numaralı bir ESHOT hattı bulunamadı.",
+            hint="Hat numarasını kontrol edin; hat vermezseniz tüm güncel duyurular listelenir.")
+    elif failures and (len(failures) == 2 or not code):
+        result.error = failures[0].error
+    meta.stale = stale
+    if stale:
+        notes.append("Kaynaklardan biri şu an cevap vermiyor; en son başarıyla alınan bilgiler gösteriliyor.")
+    meta.fetched_at = _now()
+    return result
+
+
+async def _none():
+    return None
+
+
 # ---------------------------------------------------------------- get_source_status
 
 PROBE_STOP_ID = "40010"  # sık kullanılan bir ESHOT durağı; boş liste dönmesi de "ayakta" demek
@@ -391,6 +483,11 @@ def _probes() -> dict[str, object]:
             f"{get_settings().open_meteo_air_base}/v1/air-quality", source=air.SOURCE_OPEN_METEO, retries=0,
             params={"latitude": f"{lat:.4f}", "longitude": f"{lon:.4f}", "current": "european_aqi"}),
     }
+    probes[announcements.SOURCE_CSV] = lambda: get_json(
+        get_settings().eshot_announcements_csv_url, source=announcements.SOURCE_CSV, retries=0, as_text=True)
+    probes[announcements.SOURCE_LINES] = lambda: get_json(
+        f"{get_settings().eshot_api_base}/AcikVeriEshot/Hatlar/HatlariGetir", source=announcements.SOURCE_LINES,
+        retries=0)
     if store.enabled():  # REDIS_URL yoksa önbellek yalnız bellekte; listede gösterme
         probes[SOURCE_REDIS] = store.ping
     return probes
