@@ -10,6 +10,7 @@ from .breaker import breakers
 from .cache import store
 from .config import get_settings
 from .models import ErrorCode, SourceError
+from .text import norm
 
 log = logging.getLogger(__name__)
 
@@ -82,6 +83,12 @@ async def get_json(url: str, *, source: str, params: dict[str, Any] | None = Non
     return data
 
 
+def demo_down(source: str) -> bool:
+    """DEMO_DOWN_SOURCES içinde mi? Büyük/küçük harf ve Türkçe karakter farkı önemsiz, ad tam eşleşmeli."""
+    raw = get_settings().demo_down_sources
+    return bool(raw) and norm(source) in {norm(x) for x in raw.split(",") if x.strip()}
+
+
 def _decode_text(content: bytes) -> str:
     try:
         return content.decode("utf-8-sig")
@@ -91,6 +98,12 @@ def _decode_text(content: bytes) -> str:
 
 async def _get_json(url: str, *, source: str, params: dict[str, Any] | None, retries: int | None,
                     as_text: bool = False) -> Any:
+    if demo_down(source):
+        log.warning("DEMO_DOWN_SOURCES: %s çökmüş gibi davranılıyor (istek atılmadı)", source)
+        raise SourceFailure(SourceError(
+            code=ErrorCode.SOURCE_UNAVAILABLE, source=source, retryable=True,
+            message=f"{source} şu anda cevap vermiyor. Biraz sonra tekrar denenebilir.",
+        ))
     retries = get_settings().http_retries if retries is None else retries
     last_exc: Exception | None = None
     for attempt in range(retries + 1):

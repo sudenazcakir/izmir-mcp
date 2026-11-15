@@ -118,6 +118,23 @@ aç. Sohbet kutusundaki araç simgesinde `izmir` görünmeli. Sorun olursa log: 
 `uv run izmir-mcp --http` Streamable HTTP ile `/mcp` yolunda çalışır (`PORT` ortam değişkeni). Render'a
 Docker ile kurulum ve API anahtarı doğrulaması 3. haftada eklenecek.
 
+## Demo: kaynak kapalı senaryosu
+
+Belediyenin API'sini çökertmeden "kaynak kapalı" durumunu göstermek için `.env`'e kaynak adını yaz:
+
+```
+DEMO_DOWN_SOURCES=ESHOT
+```
+
+Claude Desktop'ı yeniden başlat (Cmd+Q) ve "Bornova Metro'dan sıradaki otobüs ne zaman?" diye sor:
+
+1. İlk sorularda araç `source_unavailable` döndürür; Claude veri uydurmadan "ESHOT şu an cevap vermiyor" der.
+2. Art arda 3 hatadan sonra devre kesici açılır; araç `circuit_open` döndürür ve ESHOT'a 60 sn hiç istek atılmaz.
+3. "Veri kaynakları çalışıyor mu?" sorusunda `get_source_status` ESHOT'u `down` gösterir, diğerleri ayakta kalır.
+
+Bitince satırı boşalt (`DEMO_DOWN_SOURCES=`) ve yeniden başlat. Kaynak adları `get_source_status`
+çıktısındaki adlarla aynı olmalı (büyük/küçük harf önemsiz). Canlı sunucuda bu ayar boş olmalı.
+
 ## Klasör yapısı
 
 ```

@@ -44,6 +44,7 @@ def fake(monkeypatch):
     monkeypatch.setattr(get_settings(), "http_retries", 0)
     monkeypatch.setattr(get_settings(), "database_url", None)  # .env içindeki gerçek veritabanına dokunma
     monkeypatch.setattr(get_settings(), "redis_url", None)  # .env içindeki gerçek Redis'e de dokunma
+    monkeypatch.setattr(get_settings(), "demo_down_sources", "")  # .env'deki demo anahtarı testleri bozmasın
     store.set_redis(None)
     cache.clear()
     breakers.reset()
