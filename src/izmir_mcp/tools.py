@@ -4,10 +4,11 @@ import asyncio
 from datetime import UTC, datetime
 
 from . import db
+from .breaker import BreakerState, breakers
 from .config import get_settings
 from .districts import DISTRICTS, find_district
 from .geo import haversine_km
-from .http import SourceFailure
+from .http import SourceFailure, get_json
 from .models import (
     Arrival,
     ErrorCode,
@@ -15,6 +16,8 @@ from .models import (
     Pharmacy,
     PharmacyResult,
     SourceError,
+    SourceStatus,
+    SourceStatusResult,
     StopArrivals,
     StopRef,
 )
@@ -222,3 +225,71 @@ async def find_pharmacies(district: str | None = None, on_duty: bool = True, lim
         meta.notes.append("Kaynak şu an cevap vermiyor; en son başarıyla alınan liste gösteriliyor.")
     meta.fetched_at = _now()
     return PharmacyResult(district=d.name if d else None, on_duty=on_duty, pharmacies=result, meta=meta)
+
+
+# ---------------------------------------------------------------- get_source_status
+
+PROBE_STOP_ID = "40010"  # sık kullanılan bir ESHOT durağı; boş liste dönmesi de "ayakta" demek
+
+
+def _probes() -> dict[str, object]:
+    """Kaynak adı -> hafif bir sağlık isteği. Yeni bir kaynak eklenince buraya da eklenmeli."""
+    base = get_settings().izmir_api_base
+    konak = find_district("Konak")
+    lat, lon = konak.lat, konak.lon
+    return {
+        eshot.SOURCE: lambda: get_json(f"{base}/api/iztek/duragayaklasanotobusler/{PROBE_STOP_ID}",
+                                       source=eshot.SOURCE, retries=0),
+        eshot.SOURCE_STOPS: lambda: get_json(
+            f"{base}/api/ibb/cbs/noktayayakinduraklar", source=eshot.SOURCE_STOPS, retries=0,
+            params={"x": f"{lon:.6f}", "y": f"{lat:.6f}", "inCoordSys": "EPSG:4326", "outCoordSys": "EPSG:4326"}),
+        pharmacy.SOURCE: lambda: get_json(f"{base}/api/ibb/nobetcieczaneler", source=pharmacy.SOURCE, retries=0),
+        transit_static.SOURCE_METRO: lambda: get_json(f"{base}/api/metro/istasyonlar",
+                                                      source=transit_static.SOURCE_METRO, retries=0),
+        transit_static.SOURCE_IZBAN: lambda: get_json(f"{base}/api/izban/istasyonlar",
+                                                      source=transit_static.SOURCE_IZBAN, retries=0),
+        transit_static.SOURCE_IZDENIZ: lambda: get_json(f"{base}/api/izdeniz/iskeleler",
+                                                        source=transit_static.SOURCE_IZDENIZ, retries=0),
+    }
+
+
+def _status_of(source: str) -> SourceStatus:
+    h = breakers.known().get(source)
+    if h is None:
+        return SourceStatus(source=source, state="unknown")
+    if h.state == BreakerState.OPEN:
+        state = "down"
+    elif h.state == BreakerState.HALF_OPEN:
+        state = "recovering"
+    elif h.last_success_at is None and h.consecutive_failures == 0:
+        state = "unknown"
+    elif h.last_success_at is None or (h.last_failure_at and h.last_failure_at > h.last_success_at):
+        state = "degraded"  # son istek hata verdi ama eşik henüz aşılmadı
+    else:
+        state = "up"
+    return SourceStatus(
+        source=source, state=state, consecutive_failures=h.consecutive_failures,
+        last_success_at=h.last_success_at, last_failure_at=h.last_failure_at,
+        last_error=h.last_error if state != "up" else None, retry_in_seconds=h.retry_in_seconds(),
+    )
+
+
+async def get_source_status(probe: bool = True) -> SourceStatusResult:
+    """Her veri kaynağının durumu. probe=True: kapalı olmayan kaynaklara şimdi küçük bir istek atar."""
+    probes = _probes()
+    if probe:
+        # Devresi açık kaynaklar (bekleme süresi dolmadıysa) get_json içinde zaten hemen reddedilir.
+        await asyncio.gather(*(fn() for fn in probes.values()), return_exceptions=True)
+    names = list(probes) + [s for s in breakers.known() if s not in probes]
+    statuses = [_status_of(s) for s in names]
+    notes = []
+    if not probe:
+        notes.append("Canlı deneme yapılmadı; durumlar son gerçek isteklere göre.")
+    down = [s.source for s in statuses if s.state == "down"]
+    if down:
+        notes.append("Kapalı kaynaklar: " + ", ".join(down) + ". Bu kaynaklara bağlı sorulara şu an cevap verilemez.")
+    return SourceStatusResult(
+        sources=statuses,
+        all_up=all(s.state == "up" for s in statuses),
+        meta=Meta(sources=names, fetched_at=_now(), notes=notes),
+    )

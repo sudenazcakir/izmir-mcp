@@ -14,7 +14,7 @@ from mcp.types import ToolAnnotations
 from pydantic import Field
 
 from . import tools
-from .models import PharmacyResult, StopArrivals
+from .models import PharmacyResult, SourceStatusResult, StopArrivals
 
 mcp = MCPServer(
     name="izmir-open-data",
@@ -22,7 +22,9 @@ mcp = MCPServer(
     instructions=(
         "İzmir Büyükşehir Belediyesi açık verisi: ESHOT otobüs varışları, nöbetçi eczaneler. "
         "Varış süreleri tahminidir (ESHOT dakika vermez). Bir araç `error` döndürürse kullanıcıya "
-        "kaynağın şu an cevap vermediğini açıkça söyle, veri uydurma."
+        "kaynağın şu an cevap vermediğini açıkça söyle, veri uydurma. `circuit_open` hatası, kaynağın art arda "
+        "hata verdiği için bir süre denenmediği anlamına gelir. "
+        "`meta.stale` true ise veri eskidir, bunu belirt. Hangi kaynakların ayakta olduğunu `get_source_status` söyler."
     ),
     version="0.1.0",
 )
@@ -63,6 +65,22 @@ async def find_pharmacies(
     lon: Annotated[float | None, Field(description="Boylam (isteğe bağlı)")] = None,
 ) -> PharmacyResult:
     return await tools.find_pharmacies(district, on_duty, limit, lat, lon)
+
+
+@mcp.tool(
+    title="Veri kaynaklarının durumu",
+    description=(
+        "İzmir veri kaynaklarının (ESHOT, eczaneler, Metro, İZBAN, İZDENİZ…) şu an ayakta olup olmadığını söyler. "
+        "Bir araç hata döndürdüğünde ya da kullanıcı 'sistem çalışıyor mu' diye sorduğunda kullan. "
+        "Art arda hata veren kaynak bir süre 'down' sayılır ve ona istek atılmaz."
+    ),
+    annotations=READ_ONLY,
+)
+async def get_source_status(
+    probe: Annotated[bool, Field(description="Kaynaklara şimdi küçük bir deneme isteği at (false: son bilinen durum)")]
+    = True,
+) -> SourceStatusResult:
+    return await tools.get_source_status(probe)
 
 
 def main() -> None:

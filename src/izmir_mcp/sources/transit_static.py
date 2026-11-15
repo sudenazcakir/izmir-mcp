@@ -11,6 +11,9 @@ from ..models import Pier, Station
 from ..text import parse_float
 
 DAY = 24 * 3600
+SOURCE_METRO = "İzmir Metro"
+SOURCE_IZBAN = "İZBAN"
+SOURCE_IZDENIZ = "İZDENİZ"
 log = logging.getLogger(__name__)
 
 
@@ -32,7 +35,7 @@ async def stations_or_snapshot(kind: str) -> list[Station] | list[Pier]:
 
 async def metro_stations() -> list[Station]:
     base = get_settings().izmir_api_base
-    data, _, _ = await get_json_cached(f"{base}/api/metro/istasyonlar", source="İzmir Metro", ttl=DAY)
+    data, _, _ = await get_json_cached(f"{base}/api/metro/istasyonlar", source=SOURCE_METRO, ttl=DAY)
     return [
         Station(system="metro", source_id=s["IstasyonId"], name=s["Adi"], lat=parse_float(s["Enlem"]),
                 lon=parse_float(s["Boylam"]), seq=s.get("Sira"), active=s.get("AktifMi", True))
@@ -42,7 +45,7 @@ async def metro_stations() -> list[Station]:
 
 async def izban_stations() -> list[Station]:
     base = get_settings().izmir_api_base
-    data, _, _ = await get_json_cached(f"{base}/api/izban/istasyonlar", source="İZBAN", ttl=DAY)
+    data, _, _ = await get_json_cached(f"{base}/api/izban/istasyonlar", source=SOURCE_IZBAN, ttl=DAY)
     return [
         Station(system="izban", source_id=s["IstasyonId"], name=s["IstasyonAdi"], lat=parse_float(s["Enlem"]),
                 lon=parse_float(s["Boylam"]), seq=s.get("IstasyonSirasi"))
@@ -52,7 +55,7 @@ async def izban_stations() -> list[Station]:
 
 async def piers() -> list[Pier]:
     base = get_settings().izmir_api_base
-    data, _, _ = await get_json_cached(f"{base}/api/izdeniz/iskeleler", source="İZDENİZ", ttl=DAY)
+    data, _, _ = await get_json_cached(f"{base}/api/izdeniz/iskeleler", source=SOURCE_IZDENIZ, ttl=DAY)
     return [
         Pier(id=p["IskeleId"], name=p["Adi"], lat=parse_float(p["Enlem"]), lon=parse_float(p["Boylam"]),
              car_ferry=bool(p.get("ArabaliVapurIskelesiMi")), active=p.get("AktifMi", True))
