@@ -13,9 +13,11 @@ yapay zekâ asistanlarına **MCP araçları** olarak sunan sunucu. Yaşar Ünive
 |---|---|---|
 | `get_stop_arrivals(stop, limit=8)` | Durağa yaklaşan otobüsler ve **tahmini** varış dakikası. `stop` durak numarası (`40010`) ya da ad (`Bornova Metro`) olabilir. | ESHOT canlı, İBB CBS yakın duraklar |
 | `find_pharmacies(district, on_duty=True, limit=5, lat?, lon?)` | İlçedeki nöbetçi (ya da tüm) eczaneler, ilçe merkezine uzaklığa göre sıralı. | İzmir Eczacı Odası / İBB |
+| `get_air_quality(district, lat?, lon?, hours=12)` | Şu anki Avrupa Hava Kalitesi İndeksi ve düzeyi, kirletici değerleri, önümüzdeki saatlerin tahmini ve en yakın belediye istasyonunun son günlük ölçümü. | Open-Meteo Air Quality (model, saatlik), İBB hava kalitesi istasyonları (ölçüm, günlük) |
+| `get_source_status(probe=True)` | Her veri kaynağının durumu: `up`, `degraded`, `down`, `recovering`, `unknown`. Art arda hata veren kaynak devre kesiciyle bir süre denenmez. | Tüm kaynaklar |
 
 Her araç aynı zarfı döndürür: veri + `meta` (kaynak, zaman, önbellek, notlar) + kaynak çökerse `error`
-(`source_unavailable`, `timeout`, `not_found`, `invalid_input`, `bad_response`). Araçlar hata durumunda
+(`source_unavailable`, `timeout`, `not_found`, `invalid_input`, `bad_response`, `circuit_open`). Araçlar hata durumunda
 istisna fırlatmaz, açıklamalı bir hata nesnesi döndürür; böylece Claude "kaynak şu an cevap vermiyor" diyebilir.
 
 **Varış süresi nasıl hesaplanıyor?** ESHOT dakika vermiyor, sadece kalan durak sayısı ve otobüsün konumunu
@@ -123,7 +125,8 @@ src/izmir_mcp/
   tools.py             araçların iş mantığı
   models.py            ortak Pydantic modelleri (Arrival, Pharmacy, AirReading, Meta, SourceError…)
   http.py, cache.py    zaman aşımı + tekrar deneme, TTL önbellek + son iyi değer (2. haftada Redis)
-  sources/             kaynak başına adaptör (eshot, pharmacy, transit_static)
+  sources/             kaynak başına adaptör (eshot, pharmacy, transit_static, air)
+  breaker.py           kaynak başına devre kesici (get_source_status bunu raporlar)
   districts.py         30 ilçe ve merkez koordinatı
   ingest.py            gece yükleme işinin mantığı
   data/                API çökerse kullanılacak istasyon/iskele anlık görüntüsü
@@ -142,6 +145,10 @@ tests/                 çevrimdışı testler (+ `-m live` ile canlı testler)
   olmadığı için yükleyici birkaç olası yazımı dener. İlk gerçek çalıştırmada `stops` ve `lines` adımlarının
   sonucunu kontrol edin.
 - `pharmacies.district_id` en yakın ilçe merkezine göre atanır (yaklaşık).
+- Belediye hava kalitesi API'si yalnızca PM10 ve SO2'nin **günlük** ortalamasını veriyor ve genelde 1-3 gün
+  geriden geliyor; istasyon koordinatı da vermiyor (konumlar `sources/air.py` içinde, yaklaşık). Anlık ve
+  saatlik değerler Open-Meteo'nun CAMS modelinden gelir: ölçüm değil, tahmindir. İlçe merkezine 30 km'den
+  uzak istasyon gösterilmez.
 
 ## Lisans
 

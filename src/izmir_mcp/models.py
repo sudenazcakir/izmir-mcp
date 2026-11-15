@@ -89,7 +89,7 @@ class PharmacyResult(BaseModel):
 
 
 class AirReading(BaseModel):
-    """Hava kalitesi ölçümü (2. hafta, Bahar). Şimdiden ortak modelde duruyor."""
+    """Tek bir kirletici değeri: belediye istasyon ölçümü (günlük) ya da Open-Meteo model değeri (saatlik)."""
 
     station: str
     pollutant: str = Field(description="PM10, PM2.5, NO2, SO2, O3, CO ...")
@@ -100,6 +100,27 @@ class AirReading(BaseModel):
     source: str
     lat: float | None = None
     lon: float | None = None
+    distance_km: float | None = Field(default=None, description="Ölçüm noktasının ilçe merkezine uzaklığı")
+
+
+class HourlyAqi(BaseModel):
+    time: datetime
+    european_aqi: int | None = None
+    level: str | None = Field(default=None, description="Avrupa AQI düzeyi (Türkçe)")
+    pm2_5: float | None = None
+    pm10: float | None = None
+
+
+class AirQualityResult(BaseModel):
+    district: str | None = None
+    european_aqi: int | None = Field(default=None, description="Şu anki Avrupa Hava Kalitesi İndeksi (Open-Meteo, model)")
+    level: str | None = Field(default=None, description="AQI düzeyi: iyi, makul, orta, kötü, çok kötü, son derece kötü")
+    current: list[AirReading] = Field(default_factory=list, description="Şu anki saatlik değerler (Open-Meteo, model)")
+    station_daily: list[AirReading] = Field(
+        default_factory=list, description="En yakın belediye istasyonunun son günlük ortalaması (gerçek ölçüm)")
+    outlook: list[HourlyAqi] = Field(default_factory=list, description="Önümüzdeki saatlerin AQI tahmini")
+    meta: Meta
+    error: SourceError | None = None
 
 
 class SourceStatus(BaseModel):
