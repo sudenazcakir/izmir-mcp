@@ -5,6 +5,7 @@ from datetime import UTC, datetime
 
 from . import db
 from .breaker import BreakerState, breakers
+from .cache import SOURCE_REDIS, store
 from .config import get_settings
 from .districts import DISTRICTS, find_district
 from .geo import haversine_km
@@ -372,7 +373,7 @@ def _probes() -> dict[str, object]:
     base = get_settings().izmir_api_base
     konak = find_district("Konak")
     lat, lon = konak.lat, konak.lon
-    return {
+    probes = {
         eshot.SOURCE: lambda: get_json(f"{base}/api/iztek/duragayaklasanotobusler/{PROBE_STOP_ID}",
                                        source=eshot.SOURCE, retries=0),
         eshot.SOURCE_STOPS: lambda: get_json(
@@ -390,6 +391,9 @@ def _probes() -> dict[str, object]:
             f"{get_settings().open_meteo_air_base}/v1/air-quality", source=air.SOURCE_OPEN_METEO, retries=0,
             params={"latitude": f"{lat:.4f}", "longitude": f"{lon:.4f}", "current": "european_aqi"}),
     }
+    if store.enabled():  # REDIS_URL yoksa önbellek yalnız bellekte; listede gösterme
+        probes[SOURCE_REDIS] = store.ping
+    return probes
 
 
 def _status_of(source: str) -> SourceStatus:

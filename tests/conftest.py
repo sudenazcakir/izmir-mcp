@@ -6,7 +6,7 @@ import pytest
 
 from izmir_mcp import http
 from izmir_mcp.breaker import breakers
-from izmir_mcp.cache import cache
+from izmir_mcp.cache import cache, store
 from izmir_mcp.config import get_settings
 
 FIX = Path(__file__).parent / "fixtures"
@@ -41,12 +41,15 @@ def fake(monkeypatch):
     get_settings.cache_clear()
     monkeypatch.setattr(get_settings(), "http_retries", 0)
     monkeypatch.setattr(get_settings(), "database_url", None)  # .env içindeki gerçek veritabanına dokunma
+    monkeypatch.setattr(get_settings(), "redis_url", None)  # .env içindeki gerçek Redis'e de dokunma
+    store.set_redis(None)
     cache.clear()
     breakers.reset()
     f = FakeIzmir()
     http.set_client(httpx.AsyncClient(transport=httpx.MockTransport(f)))
     yield f
     http.set_client(None)
+    store.set_redis(None)
     cache.clear()
     breakers.reset()
     get_settings.cache_clear()
