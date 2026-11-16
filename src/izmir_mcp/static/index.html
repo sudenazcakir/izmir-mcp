@@ -8,7 +8,7 @@
 <style>
   :root {
     --bg: #eef4f6; --bg2: #fdf6ee; --surface: rgba(255,255,255,.86); --solid: #ffffff; --fg: #0f2530; --muted: #587079;
-    --line: rgba(15,37,48,.10); --accent: #0b6e8a; --accent-2: #12a3a8; --accent-ink: #ffffff; --accent-soft: #e2f1f5;
+    --line: rgba(15,37,48,.10); --accent: #0b6e8a; --accent-2: #0b7f86; --accent-ink: #ffffff; --accent-soft: #e2f1f5;
     --warm: #f08a4b; --error: #b3402c; --shadow: 0 1px 2px rgba(15,37,48,.06), 0 8px 24px rgba(15,37,48,.07);
     --tower: #0b6e8a; --radius: 18px;
     color-scheme: light;
@@ -99,7 +99,7 @@
   button:focus-visible, select:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   .send {
     flex: none; width: 42px; height: 42px; border: 0; border-radius: 14px; cursor: pointer; display: grid; place-items: center;
-    background: linear-gradient(135deg, var(--accent), var(--accent-2)); color: #fff; box-shadow: var(--shadow);
+    background: linear-gradient(135deg, var(--accent), var(--accent-2)); color: var(--accent-ink); box-shadow: var(--shadow);
   }
   .send svg { width: 20px; height: 20px; }
   .send:disabled { opacity: .45; cursor: default; }
@@ -112,20 +112,21 @@
   .icon-btn { flex: none; width: 38px; height: 38px; border-radius: 12px; border: 1px solid var(--line); background: var(--solid);
     color: var(--fg); cursor: pointer; display: grid; place-items: center; font-size: 17px; position: relative; }
   .icon-btn .badge { position: absolute; top: -4px; right: -4px; min-width: 17px; height: 17px; border-radius: 999px;
-    background: var(--warm); color: #fff; font-size: 10.5px; font-weight: 700; display: grid; place-items: center; padding: 0 4px; }
+    background: var(--warm); color: #2a1305; font-size: 10.5px; font-weight: 700; display: grid; place-items: center; padding: 0 4px; }
+  .icon-btn .badge[hidden] { display: none; }
   .city select { width: 104px; }
   .scrim { position: fixed; inset: 0; background: rgba(5,15,20,.38); z-index: 20; opacity: 0; pointer-events: none; transition: opacity .2s; }
   .drawer { position: fixed; top: 0; right: 0; bottom: 0; width: min(380px, 92vw); z-index: 21; background: var(--solid);
     border-left: 1px solid var(--line); box-shadow: -12px 0 40px rgba(0,0,0,.18); transform: translateX(102%);
-    transition: transform .25s ease; display: flex; flex-direction: column; }
+    transition: transform .25s ease, visibility 0s linear .25s; visibility: hidden; display: flex; flex-direction: column; }
   body.drawer-open .scrim { opacity: 1; pointer-events: auto; }
-  body.drawer-open .drawer { transform: none; }
+  body.drawer-open .drawer { transform: none; visibility: visible; transition: transform .25s ease; }
   .drawer-head { display: flex; align-items: center; gap: 8px; padding: 14px 14px 10px; border-bottom: 1px solid var(--line); }
   .drawer-head h2 { margin: 0; font-size: 16px; flex: 1; }
   .drawer-body { overflow-y: auto; padding: 12px 14px 20px; display: grid; gap: 18px; align-content: start; }
   .drawer h3 { margin: 0 0 8px; font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
   .new-chat { font: inherit; font-weight: 600; cursor: pointer; border: 0; border-radius: 14px; padding: 10px 14px; width: 100%;
-    background: linear-gradient(135deg, var(--accent), var(--accent-2)); color: #fff; }
+    background: linear-gradient(135deg, var(--accent), var(--accent-2)); color: var(--accent-ink); }
   .fav-list, .chat-list { display: grid; gap: 6px; }
   .fav-item, .chat-item { display: flex; align-items: center; gap: 8px; border: 1px solid var(--line); border-radius: 12px;
     padding: 7px 8px 7px 11px; font-size: 14px; background: var(--bg); }
@@ -186,7 +187,7 @@
   .trip .chips { display: flex; flex-wrap: wrap; gap: 6px; }
   .trip .chips span { font-size: 12.5px; background: var(--accent-soft); border-radius: 999px; padding: 2px 9px; }
   .trip .go { display: block; text-align: center; text-decoration: none; font-weight: 600; border-radius: 14px;
-    padding: 11px 14px; background: linear-gradient(135deg, var(--accent), var(--accent-2)); color: #fff; }
+    padding: 11px 14px; background: linear-gradient(135deg, var(--accent), var(--accent-2)); color: var(--accent-ink); }
   .trip .map { height: 200px; }
   .pin.b { background: #c2410c; }
   .live { white-space: normal; margin-top: 12px; display: grid; gap: 8px; }
@@ -242,7 +243,7 @@
   </div>
 </header>
 <div class="scrim" id="scrim"></div>
-<aside class="drawer" id="drawer" aria-label="Kayıtlılar" aria-hidden="true">
+<aside class="drawer" id="drawer" role="dialog" aria-modal="true" aria-label="Kayıtlılar" aria-hidden="true" inert>
   <div class="drawer-head"><h2>Kayıtlıların</h2><button class="x" id="close-drawer" type="button" aria-label="Kapat">✕</button></div>
   <div class="drawer-body">
     <button class="new-chat" id="new-chat" type="button">＋ Yeni sohbet</button>
@@ -478,7 +479,7 @@
     box.className = "places";
     box.innerHTML = places.map((p, i) =>
       '<div class="place"><div class="top"><span class="num">' + (i + 1) + '</span><span class="name">' + esc(p.name) +
-      '</span><span class="dist">' + esc(fmtKm(p.d)) + "</span>" + starBtn("pharmacies", p.name, p) + "</div>" +
+      '</span><span class="dist">' + esc(fmtKm(p.d)) + "</span>" + starBtn("pharmacies", p.name + "|" + (p.address || ""), p) + "</div>" +
       (p.address ? '<div class="addr">' + esc(p.address) + "</div>" : "") +
       '<div class="acts">' +
       (p.phone ? '<a href="tel:' + esc(p.phone.replace(/[^\d+]/g, "")) + '">📞 Ara</a>' : "") +
@@ -527,8 +528,9 @@
   // ---- Cihazda saklama (localStorage). Hesap yok, sunucuya gönderilmez. Erişilemezse sessizce bellekte kalır.
   const mem = {};
   const store = {
-    get(k, d) { try { const v = localStorage.getItem("izm:" + k); return v ? JSON.parse(v) : d; } catch { return k in mem ? mem[k] : d; } },
-    set(k, v) { mem[k] = v; try { localStorage.setItem("izm:" + k, JSON.stringify(v)); } catch {} },
+    // Bellekteki kopya her zaman en günceldir; yazma başarısız olsa bile (kota dolu, gizli sekme) oturum boyunca kaybolmaz.
+    get(k, d) { if (k in mem) return mem[k]; try { const v = localStorage.getItem("izm:" + k); return v ? JSON.parse(v) : d; } catch { return d; } },
+    set(k, v) { mem[k] = v; try { localStorage.setItem("izm:" + k, JSON.stringify(v)); return true; } catch { return false; } },
     wipe() { for (const k of Object.keys(mem)) delete mem[k];
       try { Object.keys(localStorage).filter(k => k.startsWith("izm:")).forEach(k => localStorage.removeItem(k)); } catch {} },
   };
@@ -564,11 +566,14 @@
     lines: f => f.key + " hattında güncel bir duyuru var mı?",
   };
   const drawerEl = document.getElementById("drawer");
+  const openBtn = document.getElementById("open-drawer");
   function openDrawer(open) {
-    document.body.classList.toggle("drawer-open", open); drawerEl.setAttribute("aria-hidden", !open);
-    if (open) drawDrawer();
+    const was = document.body.classList.contains("drawer-open");
+    document.body.classList.toggle("drawer-open", open); drawerEl.setAttribute("aria-hidden", !open); drawerEl.inert = !open;
+    if (open) { drawDrawer(); document.getElementById("close-drawer").focus(); }
+    else if (was && drawerEl.contains(document.activeElement)) openBtn.focus();
   }
-  document.getElementById("open-drawer").addEventListener("click", () => openDrawer(true));
+  openBtn.addEventListener("click", () => openDrawer(true));
   document.getElementById("close-drawer").addEventListener("click", () => openDrawer(false));
   document.getElementById("scrim").addEventListener("click", () => openDrawer(false));
   document.addEventListener("keydown", e => { if (e.key === "Escape") openDrawer(false); });
@@ -598,6 +603,8 @@
       Math.ceil(c.msgs.length / 2) + " soru</small></button>" +
       '<button class="x" type="button" data-delchat="' + i + '" aria-label="Sil">✕</button></div>').join("")
       : '<div class="empty">Sorduğun sorular burada otomatik saklanır.</div>';
+    if (!storeOk) document.getElementById("chat-list").insertAdjacentHTML("afterbegin",
+      '<div class="empty">Bu cihazda yer kalmadı ya da kayıt kapalı. Sohbetler yalnız sayfa açıkken duruyor.</div>');
     const n = favs.stops.length + favs.lines.length + favs.pharmacies.length;
     const badge = document.getElementById("fav-count"); badge.hidden = !n; badge.textContent = n;
   }
@@ -614,35 +621,38 @@
   });
   document.getElementById("new-chat").addEventListener("click", () => { openDrawer(false); newChat(); });
   document.getElementById("wipe").addEventListener("click", () => {
+    if (!confirm("Bu cihazdaki tüm favoriler ve sohbetler silinsin mi? Bu geri alınamaz.")) return;
     store.wipe(); favs = { stops: [], lines: [], pharmacies: [] }; chatId = null; drawDrawer(); newChat();
   });
 
   // Sohbet kaydı: her cevaptan sonra bu cihazda güncellenir. Canlı harita jetonu saklanmaz.
-  let chatId = null, transcript = [];
+  let chatId = null, transcript = [], storeOk = true, gen = 0;
   function saveChat() {
     if (!transcript.length) return;
     const chats = store.get("chats", []);
     if (!chatId) chatId = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
     const entry = { id: chatId, title: transcript[0].content.slice(0, 60), at: Date.now(), msgs: transcript.slice(-CHAT_MSGS) };
-    store.set("chats", [entry, ...chats.filter(c => c.id !== chatId)].slice(0, CHAT_MAX));
+    let list = [entry, ...chats.filter(c => c.id !== chatId)].slice(0, CHAT_MAX);
+    // Yer kalmadıysa en eski sohbetleri silerek yeniden dene.
+    while (!(storeOk = store.set("chats", list)) && list.length > 1) list = list.slice(0, -1);
     drawDrawer();
   }
   function stopLive() {
     if (liveTimer) { clearInterval(liveTimer); liveTimer = null; }
   }
   function newChat() {
-    stopLive(); history.length = 0; transcript = []; chatId = null;
+    gen++; stopLive(); history.length = 0; transcript = []; chatId = null;
     log.innerHTML = ""; log.appendChild(welcomeTpl.cloneNode(true)); drawHomeFavs(); q.focus();
   }
   function openChat(c) {
     if (!c) return;
-    stopLive(); history.length = 0; transcript = c.msgs.slice(); chatId = c.id; log.innerHTML = "";
+    gen++; stopLive(); history.length = 0; transcript = c.msgs.slice(); chatId = c.id; log.innerHTML = "";
     for (const m of c.msgs) {
       history.push({ role: m.role, content: m.content });
       if (m.role === "user") { add("user", esc(m.content)); continue; }
       const el = add("bot", fmt(m.content));
       if (m.places && m.places.length) renderPlaces(el, m.places, null);
-      if (m.trip) renderTrip(el, m.trip);
+      if (m.trip && m.trip.origin && m.trip.destination) renderTrip(el, m.trip);
       if (m.live) {
         const n = document.createElement("div"); n.className = "map-note";
         n.textContent = "🚌 Bu cevapta canlı otobüs haritası vardı. Güncel konumlar için soruyu tekrar sor.";
@@ -661,7 +671,7 @@
     w.insertBefore(box, w.querySelector(".cats"));
   }
 
-  // Şehir: şimdilik yalnız İzmir; seçim bu cihazda hatırlanır.
+  // Şehir: şimdilik yalnız İzmir. Başka şehir eklenince seçim bu cihazdan okunacak.
   const citySel = document.getElementById("city");
   citySel.value = "izmir";  // başka şehir eklenince: store.get("city", "izmir")
   citySel.addEventListener("change", () => store.set("city", citySel.value));
@@ -683,6 +693,7 @@
   async function ask(text) {
     if (busy || !text.trim()) return;
     busy = true; send.disabled = true;
+    const myGen = gen;
     history.push({ role: "user", content: text.trim() });
     add("user", esc(text.trim()));
     const wait = add("bot", '<span class="dots" aria-label="Cevap yazılıyor"><span></span><span></span><span></span></span>');
@@ -692,6 +703,7 @@
         body: JSON.stringify({ messages: history.slice(-12), ...(userLoc ? { location: userLoc } : {}) }),
       });
       const data = await res.json().catch(() => ({}));
+      if (myGen !== gen) return;  // kullanıcı bu arada başka sohbete geçti: cevabı oraya yazma
       if (!res.ok) throw new Error(data.error || "Bir sorun oluştu, tekrar dener misin?");
       history.push({ role: "assistant", content: data.answer });
       transcript.push({ role: "user", content: text.trim() }, { role: "assistant", content: data.answer,
@@ -703,6 +715,7 @@
       if (data.trip && data.trip.origin && data.trip.destination) renderTrip(wait, data.trip);
       if (data.live && Array.isArray(data.live.stops) && data.live.stops.length) renderLive(wait, data.live);
     } catch (e) {
+      if (myGen !== gen) return;
       history.pop();
       wait.classList.add("error");
       wait.textContent = e.message === "Failed to fetch" ? "Sunucuya ulaşılamadı. İnternet bağlantını kontrol et." : e.message;
