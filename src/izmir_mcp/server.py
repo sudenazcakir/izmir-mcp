@@ -21,6 +21,7 @@ from .models import (
     SourceStatusResult,
     StopArrivals,
     TransitDirections,
+    WeatherResult,
 )
 
 mcp = MCPServer(
@@ -94,6 +95,25 @@ async def get_transit_directions(
     origin_lon: Annotated[float | None, Field(description="Kullanıcının boylamı (isteğe bağlı)")] = None,
 ) -> TransitDirections:
     return await tools.get_transit_directions(origin, destination, origin_lat, origin_lon)
+
+
+@mcp.tool(
+    title="Hava durumu ve giyim önerisi",
+    description=(
+        "Bir İzmir ilçesi ya da konum için şu anki hava durumunu ve bugünün/yarının sabah (07-11), öğle (12-16), "
+        "akşam (17-21) dönemlerini verir: sıcaklık, hissedilen, yağış olasılığı, rüzgâr, UV, hava kalitesi (AQI) "
+        "ve her dönem için kurala dayalı giyim önerileri (`clothing`). 'Ne giysem?', 'şemsiye alayım mı?', "
+        "'yarın hava nasıl?' gibi sorularda kullan. Veriler Open-Meteo model tahminidir."
+    ),
+    annotations=READ_ONLY,
+)
+async def get_weather(
+    district: Annotated[str | None, Field(description="İzmir ilçesi, ör. 'Bornova'")] = None,
+    lat: Annotated[float | None, Field(description="Enlem (isteğe bağlı)")] = None,
+    lon: Annotated[float | None, Field(description="Boylam (isteğe bağlı)")] = None,
+    day: Annotated[str, Field(description="'bugün' ya da 'yarın'")] = "bugün",
+) -> WeatherResult:
+    return await tools.get_weather(district, lat, lon, day)
 
 
 @mcp.tool(

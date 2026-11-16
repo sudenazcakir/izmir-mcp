@@ -9,7 +9,7 @@ async def test_tools_listed():
     async with Client(mcp) as c:
         names = {t.name for t in (await c.list_tools()).tools}
     assert {"get_stop_arrivals", "find_pharmacies", "get_source_status", "get_air_quality", "get_announcements",
-            "get_transit_directions"} <= names
+            "get_transit_directions", "get_weather"} <= names
 
 
 async def test_call_find_pharmacies_structured(fake):

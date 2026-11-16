@@ -1,7 +1,7 @@
 """Araçların iş mantığı. server.py bunları MCP aracı olarak kaydeder; testler doğrudan çağırır."""
 
 import asyncio
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from . import db
 from .breaker import BreakerState, breakers
@@ -16,6 +16,7 @@ from .models import (
     Announcement,
     AnnouncementsResult,
     Arrival,
+    DayPeriod,
     ErrorCode,
     HourlyAqi,
     LineNote,
@@ -30,8 +31,10 @@ from .models import (
     StopRef,
     TransitDirections,
     TripPoint,
+    WeatherNow,
+    WeatherResult,
 )
-from .sources import air, announcements, eshot, pharmacy, transit_static
+from .sources import air, announcements, eshot, pharmacy, transit_static, weather
 from .text import norm, parse_float, strip_stop_words
 
 MAX_STOPS_PER_QUERY = 10  # Bornova Metro gibi aktarma merkezlerinde aynı adlı 10 peron var
@@ -634,3 +637,122 @@ async def get_transit_directions(origin: str, destination: str, origin_lat: floa
         origin=o, destination=d, straight_km=round(haversine_km(o.lat, o.lon, d.lat, d.lon), 1),
         nearby_stations=near, maps_url=transit_maps_url(o, d), meta=meta,
     )
+
+
+# ---------------------------------------------------------------- get_weather
+
+PERIODS = (("sabah", 7, 11), ("öğle", 12, 16), ("akşam", 17, 21))
+WEATHER_SEVERITY = [0, 1, 2, 3, 45, 48, 51, 53, 55, 61, 80, 63, 81, 71, 73, 56, 57, 65, 66, 67, 82, 75, 77, 85, 86,
+                    95, 96, 99]
+
+
+def clothing_for(p: DayPeriod) -> list[str]:
+    """Hissedilen sıcaklık, yağış, rüzgâr, UV ve hava kalitesine göre basit, açıklanabilir giyim önerisi."""
+    out: list[str] = []
+    feels = p.feels_like_min_c if p.feels_like_min_c is not None else p.temp_min_c
+    if feels is not None:
+        if feels >= 27:
+            out.append("tişört, ince ve açık renkli giysiler")
+        elif feels >= 22:
+            out.append("tişört ya da ince gömlek")
+        elif feels >= 17:
+            out.append("uzun kollu üst ya da yanına ince bir hırka")
+        elif feels >= 12:
+            out.append("kazak üstüne hafif mont ya da ceket")
+        elif feels >= 7:
+            out.append("kalın mont, kazak")
+        else:
+            out.append("kaban, atkı, bere ve eldiven")
+    if (p.rain_chance_pct or 0) >= 40 or (p.rain_mm or 0) >= 0.5:
+        out.append("şemsiye ya da yağmurluk, su geçirmeyen ayakkabı")
+    if (p.wind_max_kmh or 0) >= 30:
+        out.append("rüzgârlık (rüzgâr sert)")
+    if (p.uv_max or 0) >= 6:
+        out.append("şapka, güneş gözlüğü ve güneş kremi")
+    if (p.european_aqi_max or 0) >= 60:
+        out.append("hava kalitesi kötü: hassas kişiler maske takabilir, uzun dış mekân sporundan kaçının")
+    if p.temp_min_c is not None and p.temp_max_c is not None and p.temp_max_c - p.temp_min_c >= 6:
+        out.append("gün içinde sıcaklık değişiyor: katmanlı giyin")
+    return out
+
+
+def _vals(hourly: dict, key: str, idx: list[int]) -> list[float]:
+    arr = hourly.get(key) or []
+    return [arr[i] for i in idx if i < len(arr) and isinstance(arr[i], int | float)]
+
+
+async def get_weather(district: str | None = None, lat: float | None = None, lon: float | None = None,
+                      day: str = "bugün") -> WeatherResult:
+    started = _now()
+    meta = Meta(sources=[weather.SOURCE, air.SOURCE_OPEN_METEO], fetched_at=started)
+    day_n = "yarın" if norm(day) in {"yarin", "tomorrow", "ertesi gun"} else "bugün"
+    d = find_district(district) if district else None
+    if district and d is None and (lat is None or lon is None):
+        return WeatherResult(day=day_n, meta=meta, error=SourceError(
+            code=ErrorCode.INVALID_INPUT, message=f"'{district}' İzmir ilçeleri arasında bulunamadı.",
+            hint="Geçerli ilçeler: " + ", ".join(x.name for x in DISTRICTS)))
+    if d is None and (lat is None or lon is None):
+        d = find_district("Konak")
+        meta.notes.append("Yer belirtilmediği için İzmir merkezi (Konak) kullanıldı.")
+    ref_lat, ref_lon = (lat, lon) if lat is not None and lon is not None else (d.lat, d.lon)
+    place = d.name if d is not None and (lat is None or lon is None) else "Konumun"
+
+    wx_task = asyncio.create_task(weather.forecast(ref_lat, ref_lon))
+    aq_task = asyncio.create_task(air.open_meteo(ref_lat, ref_lon))
+    try:
+        data, cached, stale = await wx_task
+    except SourceFailure as f:
+        aq_task.cancel()
+        return WeatherResult(place=place, day=day_n, meta=meta, error=f.error)
+    try:
+        aq, _, _ = await aq_task
+    except SourceFailure:
+        aq = {}
+        meta.notes.append("Hava kalitesi tahmini alınamadı; öneriler yalnız hava durumuna göre.")
+
+    cur = data.get("current") or {}
+    now = WeatherNow(
+        temperature_c=cur.get("temperature_2m"), feels_like_c=cur.get("apparent_temperature"),
+        description=weather.describe(cur.get("weather_code")), wind_kmh=cur.get("wind_speed_10m"),
+        humidity_pct=cur.get("relative_humidity_2m"), precipitation_mm=cur.get("precipitation"),
+    )
+    hourly = data.get("hourly") or {}
+    times = [air.parse_local_time(t, data.get("utc_offset_seconds")) for t in hourly.get("time") or []]
+    local_now = started.astimezone(times[0].tzinfo) if times else started
+    target = local_now.date() if day_n == "bugün" else (local_now + timedelta(days=1)).date()
+    aq_by_time = {}
+    aq_h = aq.get("hourly") or {}
+    for t, v in zip(aq_h.get("time") or [], aq_h.get("european_aqi") or [], strict=False):
+        if isinstance(v, int | float):
+            aq_by_time[t] = v
+
+    periods: list[DayPeriod] = []
+    for name, h0, h1 in PERIODS:
+        idx = [i for i, t in enumerate(times) if t.date() == target and h0 <= t.hour <= h1]
+        if not idx or (day_n == "bugün" and local_now.hour > h1):
+            continue
+        temps = _vals(hourly, "temperature_2m", idx)
+        feels = _vals(hourly, "apparent_temperature", idx)
+        codes = [int(c) for c in _vals(hourly, "weather_code", idx)]
+        worst = max(codes, key=lambda c: WEATHER_SEVERITY.index(c) if c in WEATHER_SEVERITY else 0, default=None)
+        aqis = [aq_by_time[hourly["time"][i]] for i in idx if hourly["time"][i] in aq_by_time]
+        p = DayPeriod(
+            name=name, hours=f"{h0:02d}-{h1:02d}",
+            temp_min_c=min(temps, default=None), temp_max_c=max(temps, default=None),
+            feels_like_min_c=min(feels, default=None),
+            rain_chance_pct=max(_vals(hourly, "precipitation_probability", idx), default=None),
+            rain_mm=round(sum(_vals(hourly, "precipitation", idx)), 1) if idx else None,
+            wind_max_kmh=max(_vals(hourly, "wind_gusts_10m", idx) or _vals(hourly, "wind_speed_10m", idx),
+                             default=None),
+            uv_max=max(_vals(hourly, "uv_index", idx), default=None),
+            description=weather.describe(worst),
+            european_aqi_max=max(aqis, default=None), aqi_level=air.aqi_level(max(aqis, default=None)),
+        )
+        p.clothing = clothing_for(p)
+        periods.append(p)
+    if not periods:
+        meta.notes.append("Bugünün sabah/öğle/akşam saatleri geçti; yarın için day='yarın' ile sor.")
+    meta.notes.append("Hava durumu ve hava kalitesi Open-Meteo model tahminidir; giyim önerileri kurala dayalıdır.")
+    meta.cached, meta.stale = cached, stale
+    return WeatherResult(place=place, lat=ref_lat, lon=ref_lon, day=day_n, date=target.isoformat(), now=now,
+                         periods=periods, meta=meta)
