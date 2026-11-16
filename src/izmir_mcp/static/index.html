@@ -116,13 +116,22 @@
   .icon-btn .badge[hidden] { display: none; }
   .city select { width: 104px; }
   .scrim { position: fixed; inset: 0; background: rgba(5,15,20,.38); z-index: 20; opacity: 0; pointer-events: none; transition: opacity .2s; }
-  .drawer { position: fixed; top: 0; right: 0; bottom: 0; width: min(380px, 92vw); z-index: 21; background: var(--solid);
-    border-left: 1px solid var(--line); box-shadow: -12px 0 40px rgba(0,0,0,.18); transform: translateX(102%);
+  .drawer { position: fixed; top: 0; left: 0; bottom: 0; width: min(320px, 88vw); z-index: 21; background: var(--solid);
+    border-right: 1px solid var(--line); box-shadow: 12px 0 40px rgba(0,0,0,.18); transform: translateX(-102%);
+    padding-left: env(safe-area-inset-left);
     transition: transform .25s ease, visibility 0s linear .25s; visibility: hidden; display: flex; flex-direction: column; }
   body.drawer-open .scrim { opacity: 1; pointer-events: auto; }
   body.drawer-open .drawer { transform: none; visibility: visible; transition: transform .25s ease; }
   .drawer-head { display: flex; align-items: center; gap: 8px; padding: 14px 14px 10px; border-bottom: 1px solid var(--line); }
   .drawer-head h2 { margin: 0; font-size: 16px; flex: 1; }
+  /* Geniş ekranda Claude'daki gibi solda sabit kenar çubuğu */
+  @media (min-width: 900px) {
+    body { padding-left: 288px; }
+    .drawer { width: 288px; transform: none; visibility: visible; box-shadow: none; transition: none;
+      background: color-mix(in srgb, var(--solid) 82%, var(--bg)); }
+    .scrim, #open-drawer, #close-drawer { display: none; }
+    .tower { right: max(-40px, calc(50% - 560px - 144px)); }
+  }
   .drawer-body { overflow-y: auto; padding: 12px 14px 20px; display: grid; gap: 18px; align-content: start; }
   .drawer h3 { margin: 0 0 8px; font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
   .new-chat { font: inherit; font-weight: 600; cursor: pointer; border: 0; border-radius: 14px; padding: 10px 14px; width: 100%;
@@ -138,6 +147,7 @@
   .x { flex: none; width: 26px; height: 26px; border-radius: 8px; border: 0; background: transparent; color: var(--muted);
     cursor: pointer; font-size: 15px; }
   .x:hover { background: var(--accent-soft); color: var(--fg); }
+  .chat-item.on { border-color: var(--accent); background: var(--accent-soft); }
   .empty { font-size: 13px; color: var(--muted); }
   .privacy { font-size: 12px; color: var(--muted); display: grid; gap: 8px; }
   .privacy button { justify-self: start; font: inherit; font-size: 12.5px; color: var(--error); background: none; border: 1px solid var(--line);
@@ -228,13 +238,13 @@
 </svg>
 <header>
   <div class="wrap">
+    <button class="icon-btn" id="open-drawer" type="button" aria-label="Sohbetler ve favoriler"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h10"/></svg><span class="badge" id="fav-count" hidden></span></button>
     <div class="logo"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round" aria-hidden="true"><path d="M12 2v2.5"/><path d="M9.5 8c.4-2 1.4-3.2 2.5-3.6 1.1.4 2.1 1.6 2.5 3.6"/><path d="M9 8h6v3H9z"/><rect x="8.5" y="11" width="7" height="5"/><circle cx="12" cy="13.5" r="1.4"/><path d="M7 16h10v6H7z"/><path d="M5 22h14"/></svg></div>
     <div class="brand">
       <h1>İzmir Asistanı</h1>
       <p>Açık veriyle otobüs, yol tarifi, eczane, hava</p>
     </div>
-    <button class="icon-btn" id="open-drawer" type="button" aria-label="Kayıtlı sohbetler ve favoriler" style="margin-left:auto">⭐<span class="badge" id="fav-count" hidden></span></button>
-    <label class="city" title="Şehir" style="margin-left:0">
+    <label class="city" title="Şehir">
       <select id="city" aria-label="Şehir">
         <option value="izmir" selected>İzmir</option>
         <option disabled>Diğer şehirler yakında</option>
@@ -244,7 +254,7 @@
 </header>
 <div class="scrim" id="scrim"></div>
 <aside class="drawer" id="drawer" role="dialog" aria-modal="true" aria-label="Kayıtlılar" aria-hidden="true" inert>
-  <div class="drawer-head"><h2>Kayıtlıların</h2><button class="x" id="close-drawer" type="button" aria-label="Kapat">✕</button></div>
+  <div class="drawer-head"><h2>Sohbetler ve favoriler</h2><button class="x" id="close-drawer" type="button" aria-label="Kapat">✕</button></div>
   <div class="drawer-body">
     <button class="new-chat" id="new-chat" type="button">＋ Yeni sohbet</button>
     <section><h3>⭐ Favori duraklar</h3><div class="fav-list" id="fav-stops"></div></section>
@@ -611,7 +621,22 @@
   };
   const drawerEl = document.getElementById("drawer");
   const openBtn = document.getElementById("open-drawer");
+  const wide = matchMedia("(min-width: 900px)");
+  function sidebarMode() {
+    // Geniş ekranda panel hep açık bir kenar çubuğu; dialog değil, arkadaki sayfa kilitlenmez.
+    document.body.classList.remove("drawer-open");
+    for (const el of document.querySelectorAll("body > header, body > main, body > form")) el.inert = false;
+    if (wide.matches) {
+      drawerEl.inert = false; drawerEl.removeAttribute("aria-hidden"); drawerEl.removeAttribute("aria-modal");
+      drawerEl.setAttribute("role", "complementary");
+    } else {
+      drawerEl.inert = true; drawerEl.setAttribute("aria-hidden", "true"); drawerEl.setAttribute("aria-modal", "true");
+      drawerEl.setAttribute("role", "dialog");
+    }
+  }
+  wide.addEventListener("change", sidebarMode);
   function openDrawer(open) {
+    if (wide.matches) return;
     const was = document.body.classList.contains("drawer-open");
     document.body.classList.toggle("drawer-open", open); drawerEl.setAttribute("aria-hidden", !open); drawerEl.inert = !open;
     for (const el of document.querySelectorAll("body > header, body > main, body > form")) el.inert = open;
@@ -619,6 +644,7 @@
     else if (was && drawerEl.contains(document.activeElement)) openBtn.focus();
   }
   openBtn.addEventListener("click", () => openDrawer(true));
+  sidebarMode();
   document.getElementById("close-drawer").addEventListener("click", () => openDrawer(false));
   document.getElementById("scrim").addEventListener("click", () => openDrawer(false));
   document.addEventListener("keydown", e => { if (e.key === "Escape") openDrawer(false); });
@@ -643,7 +669,8 @@
     }
     const chats = loadChats();
     document.getElementById("chat-list").innerHTML = chats.length ? chats.map((c, i) =>
-      '<div class="chat-item"><button class="go" type="button" data-chat="' + i + '"><b>' + esc(c.title) + "</b><small>" +
+      '<div class="chat-item' + (c.id === chatId ? " on" : "") + '"><button class="go" type="button" data-chat="' + i + '"' +
+      (c.id === chatId ? ' aria-current="true"' : "") + '><b>' + esc(c.title) + "</b><small>" +
       esc(new Date(c.at).toLocaleString("tr-TR", { dateStyle: "medium", timeStyle: "short" })) + " · " +
       Math.ceil(c.msgs.length / 2) + " soru</small></button>" +
       '<button class="x" type="button" data-delchat="' + i + '" aria-label="' + esc(c.title + " sohbetini sil") + '">✕</button></div>').join("")
@@ -695,11 +722,11 @@
   }
   function newChat() {
     gen++; busy = false; send.disabled = false; stopLive(); history.length = 0; transcript = []; chatId = null;
-    log.innerHTML = ""; log.appendChild(welcomeTpl.cloneNode(true)); drawHomeFavs(); q.focus();
+    log.innerHTML = ""; log.appendChild(welcomeTpl.cloneNode(true)); drawHomeFavs(); drawDrawer(); q.focus();
   }
   function openChat(c) {
     if (!c) return;
-    gen++; busy = false; send.disabled = false; stopLive(); history.length = 0; transcript = c.msgs.slice(); chatId = c.id;
+    gen++; busy = false; send.disabled = false; stopLive(); history.length = 0; transcript = c.msgs.slice(); chatId = c.id; drawDrawer();
     log.innerHTML = "";
     for (const m of c.msgs) {
       history.push({ role: m.role, content: m.content });
