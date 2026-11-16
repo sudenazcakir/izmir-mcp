@@ -453,17 +453,19 @@
     }).catch(() => { mapEl.remove(); });
 
     const started = Date.now();
+    let myTimer = null;  // bu kartın zamanlayıcısı; eski kartın geç gelen cevabı yenisini durdurmasın
+    const stopMine = () => { clearInterval(myTimer); if (liveTimer === myTimer) liveTimer = null; };
     async function refresh() {
       if (document.hidden) return;
       if (Date.now() - started > LIVE_FOR) {
-        clearInterval(liveTimer); liveTimer = null; status.classList.add("off");
+        stopMine(); status.classList.add("off");
         status.lastChild.textContent = " Canlı takip 10 dakika sonra durdu. Güncel durum için tekrar sor."; return;
       }
       try {
         const res = await fetch("/api/live", { method: "POST", headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ token: live.token }) });
         if (res.status === 403) {
-          clearInterval(liveTimer); liveTimer = null; status.classList.add("off");
+          stopMine(); status.classList.add("off");
           status.lastChild.textContent = " Canlı takip süresi doldu. Güncel durum için tekrar sor."; return;
         }
         if (!res.ok) throw new Error();
@@ -473,7 +475,7 @@
         status.lastChild.textContent = " Canlı · son güncelleme " + new Date().toLocaleTimeString("tr-TR");
       } catch { status.classList.add("off"); status.lastChild.textContent = " Güncellenemedi, tekrar denenecek…"; }
     }
-    if (live.token) liveTimer = setInterval(refresh, LIVE_EVERY);
+    if (live.token) liveTimer = myTimer = setInterval(refresh, LIVE_EVERY);
   }
 
   function renderPlaces(el, raw, origin, restoredNearMe) {
@@ -624,13 +626,13 @@
   function favRow(kind, f, i) {
     if (kind === "pharmacies") {
       return '<div class="fav-item"><span class="go"><b>' + esc(f.name || f.key) + "</b><small>" + esc(f.address || "") +
-        "</small></span>" + (f.phone ? '<a href="tel:' + esc(f.phone.replace(/[^\d+]/g, "")) + '">📞</a>' : "") +
+        "</small></span>" + (f.phone ? '<a href="tel:' + esc(f.phone.replace(/[^\d+]/g, "")) + '" aria-label="' + esc((f.name || f.key) + " eczanesini ara") + '">📞</a>' : "") +
         (f.lat != null ? '<a href="' + esc(routeUrl(f)) + '" target="_blank" rel="noopener">🧭 Yol</a>' : "") +
-        '<button class="x" type="button" data-del="' + kind + '" data-i="' + i + '" aria-label="Sil">✕</button></div>';
+        '<button class="x" type="button" data-del="' + kind + '" data-i="' + i + '" aria-label="' + esc((f.name || f.key) + " favorisini sil") + '">✕</button></div>';
     }
     return '<div class="fav-item"><button class="go" type="button" data-ask="' + kind + '" data-i="' + i + '"><b>' +
       esc(f.key) + "</b>" + (f.name ? "<small>" + esc(f.name) + "</small>" : "") + "</button>" +
-      '<button class="x" type="button" data-del="' + kind + '" data-i="' + i + '" aria-label="Sil">✕</button></div>';
+      '<button class="x" type="button" data-del="' + kind + '" data-i="' + i + '" aria-label="' + esc(f.key + " favorisini sil") + '">✕</button></div>';
   }
   function drawDrawer() {
     const empty = { stops: "Canlı otobüs kartındaki ☆ Kaydet ile durak ekle.", lines: "Otobüs listesindeki ☆ ile hat ekle.",
@@ -644,7 +646,7 @@
       '<div class="chat-item"><button class="go" type="button" data-chat="' + i + '"><b>' + esc(c.title) + "</b><small>" +
       esc(new Date(c.at).toLocaleString("tr-TR", { dateStyle: "medium", timeStyle: "short" })) + " · " +
       Math.ceil(c.msgs.length / 2) + " soru</small></button>" +
-      '<button class="x" type="button" data-delchat="' + i + '" aria-label="Sil">✕</button></div>').join("")
+      '<button class="x" type="button" data-delchat="' + i + '" aria-label="' + esc(c.title + " sohbetini sil") + '">✕</button></div>').join("")
       : '<div class="empty">Sorduğun sorular burada otomatik saklanır.</div>';
     if (!storeOk) document.getElementById("chat-list").insertAdjacentHTML("afterbegin",
       '<div class="empty">Bu cihazda yer kalmadı ya da kayıt kapalı. Sohbetlerin bir kısmı yalnız sayfa açıkken duruyor.</div>');
