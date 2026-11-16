@@ -1,10 +1,11 @@
 from types import SimpleNamespace as NS
 
 import pytest
+from starlette.requests import Request
 from starlette.testclient import TestClient
 
 from izmir_mcp.config import Settings
-from izmir_mcp.web import MCP_BETA, RateLimiter, clean_history, create_app
+from izmir_mcp.web import MAX_HISTORY_CHARS, MCP_BETA, RateLimiter, clean_history, client_ip, create_app
 
 
 class FakeMessages:
@@ -130,5 +131,76 @@ def test_clean_history(raw, ok):
 
 
 def test_rate_limiter_window():
-    rl = RateLimiter(1, window=0)
+    rl = RateLimiter(1, 100, window=0)
     assert rl.allow("a") and rl.allow("a")
+
+
+def ask(tc, xff=None):
+    headers = {"X-Forwarded-For": xff} if xff else {}
+    return tc.post("/api/chat", json={"messages": [{"role": "user", "content": "x"}]}, headers=headers).status_code
+
+
+def test_spoofed_forwarded_for_does_not_bypass_limit():
+    client, _ = fake_client(*[reply(text("ok")) for _ in range(3)])
+    with TestClient(create_app(settings(chat_rate_limit=2), client)) as tc:
+        # Render gerçek IP'yi sona ekler; ilk değer her istekte farklı ve sahte.
+        codes = [ask(tc, f"10.0.0.{i}, 203.0.113.7") for i in range(3)]
+    assert codes == [200, 200, 429]
+
+
+def test_client_ip_uses_last_forwarded_value():
+    req = Request({"type": "http", "headers": [(b"x-forwarded-for", b"1.1.1.1, 2.2.2.2")], "client": ("9.9.9.9", 1)})
+    assert client_ip(req) == "2.2.2.2"
+    assert client_ip(Request({"type": "http", "headers": [], "client": ("9.9.9.9", 1)})) == "9.9.9.9"
+
+
+def test_global_limit_applies_across_ips():
+    client, _ = fake_client(*[reply(text("ok")) for _ in range(3)])
+    with TestClient(create_app(settings(chat_rate_limit=10, chat_global_rate_limit=2), client)) as tc:
+        codes = [ask(tc, f"198.51.100.{i}") for i in range(3)]
+    assert codes == [200, 200, 429]
+
+
+def test_rate_limiter_keeps_bounded_keys():
+    rl = RateLimiter(5, 10_000, max_keys=3)
+    for i in range(10):
+        assert rl.allow(f"ip{i}")
+    assert len(rl.hits) <= 3
+
+
+def test_long_history_is_trimmed_to_budget():
+    client, msgs = fake_client(reply(text("ok")))
+    history = [{"role": "user" if i % 2 == 0 else "assistant", "content": "a" * 4000} for i in range(11)]
+    history.append({"role": "user", "content": "Son soru?"})
+    with TestClient(create_app(settings(), client)) as tc:
+        assert tc.post("/api/chat", json={"messages": history}).status_code == 200
+    sent = msgs.calls[0]["messages"]
+    assert sum(len(m["content"]) for m in sent) <= MAX_HISTORY_CHARS
+    assert sent[0]["role"] == "user"
+    assert sent[-1] == {"role": "user", "content": "Son soru?"}
+
+
+def test_trimmed_history_starts_with_user():
+    raw = [
+        {"role": "user", "content": "u" * 1000},
+        {"role": "assistant", "content": "a" * 2000},
+        {"role": "user", "content": "u" * 1000},
+        {"role": "assistant", "content": "a" * 2000},
+        {"role": "user", "content": "u" * 1000},
+        {"role": "assistant", "content": "a" * 2000},
+        {"role": "user", "content": "son"},
+    ]
+    out = clean_history(raw)
+    assert out[0]["role"] == "user" and out[-1]["content"] == "son"
+    assert sum(len(m["content"]) for m in out) <= MAX_HISTORY_CHARS
+
+
+def test_mcp_fails_closed_when_public_without_key():
+    with TestClient(create_app(settings(mcp_api_key=None))) as tc:
+        assert tc.post("/mcp", json=INIT, headers=MCP_HEADERS).status_code == 503
+
+
+def test_mcp_open_locally_without_key():
+    local = settings(mcp_api_key=None, public_base_url=None, anthropic_api_key=None)
+    with TestClient(create_app(local)) as tc:
+        assert tc.post("/mcp", json=INIT, headers=MCP_HEADERS).status_code == 200

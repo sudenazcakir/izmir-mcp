@@ -135,7 +135,7 @@ herkese açık bir adreste (Render) çalışır. Yerelde `uv run izmir-mcp-web` 
 `PUBLIC_BASE_URL` olmadan `/api/chat` "yapılandırılmadı" der.
 
 Güvenlik ve maliyet: `ANTHROPIC_API_KEY` yalnız sunucuda (Render ortam değişkeni) durur, tarayıcıya gitmez.
-IP başına 10 dakikada `CHAT_RATE_LIMIT` soru (varsayılan 20), soru başına en fazla 1000 karakter. Anthropic
+IP başına 10 dakikada `CHAT_RATE_LIMIT` soru (varsayılan 20), tüm kullanıcılar toplamında `CHAT_GLOBAL_RATE_LIMIT` (varsayılan 200), soru başına en fazla 1000 karakter, Claude'a giden geçmiş toplamda en fazla 8000 karakter. Herkese açık ortamda `MCP_API_KEY` girilmemişse `/mcp` kapalı kalır (503). Anthropic
 Console'da aylık harcama sınırı $5. Haiku 5.5 ile bir soru yaklaşık $0.001–0.002.
 
 ### Render'a kurulum

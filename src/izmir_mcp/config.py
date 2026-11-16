@@ -31,6 +31,7 @@ class Settings(BaseSettings):
     chat_effort: str = "low"  # low | medium | high: sohbet için low hızlı ve ucuz
     chat_max_tokens: int = 2048
     chat_rate_limit: int = 20  # IP başına, 10 dakikada en fazla bu kadar soru
+    chat_global_rate_limit: int = 200  # tüm IP'ler toplamı, 10 dakikada (harcama tavanı)
     # /mcp ucunu koruyan paylaşılan anahtar. Boşsa /mcp herkese açıktır (yalnız yerelde böyle bırak).
     mcp_api_key: str | None = None
     # Claude API'nin MCP sunucumuza ulaşacağı herkese açık adres. Render bunu RENDER_EXTERNAL_URL olarak kendisi verir.

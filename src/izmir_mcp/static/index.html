@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>İzmir Asistanı</title>
-<meta name="description" content="İzmir'de otobüs, nöbetçi eczane ve şehir bilgisini açık veriyle cevaplayan asistan.">
+<meta name="description" content="İzmir'de otobüs, nöbetçi eczane, hava kalitesi ve şehir bilgisini açık veriyle cevaplayan asistan.">
 <style>
   :root {
     --bg: #f4f7f8; --surface: #ffffff; --fg: #13232a; --muted: #5a6e76; --line: #d8e2e6;
@@ -74,7 +74,7 @@
 <header>
   <div class="wrap">
     <h1>İzmir Asistanı</h1>
-    <p>İzmir Büyükşehir açık verisiyle otobüs ve nöbetçi eczane bilgisi</p>
+    <p>İzmir Büyükşehir açık verisiyle otobüs, nöbetçi eczane ve hava kalitesi bilgisi</p>
   </div>
 </header>
 <main id="scroll">
@@ -84,6 +84,7 @@
       <div class="examples">
         <button type="button">Bornova Metro durağına sıradaki otobüs ne zaman?</button>
         <button type="button">Buca'da bugün nöbetçi eczane hangisi?</button>
+        <button type="button">Bornova'da hava kalitesi nasıl, akşam dışarı çıkılır mı?</button>
         <button type="button">Konak İskele'ye hangi otobüsler yaklaşıyor?</button>
       </div>
     </div>
@@ -98,7 +99,10 @@
 </form>
 <script>
 (() => {
-  const TOOL_NAMES = { get_stop_arrivals: "Otobüs varışları", find_pharmacies: "Eczaneler" };
+  const TOOL_NAMES = {
+    get_stop_arrivals: "Otobüs varışları", find_pharmacies: "Eczaneler",
+    get_air_quality: "Hava kalitesi", get_source_status: "Kaynak durumu", get_announcements: "Duyurular",
+  };
   const log = document.getElementById("log"), scroll = document.getElementById("scroll");
   const form = document.getElementById("form"), q = document.getElementById("q"), send = document.getElementById("send");
   const history = [];
