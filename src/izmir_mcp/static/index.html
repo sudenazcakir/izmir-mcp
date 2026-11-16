@@ -315,7 +315,7 @@
     navigator.geolocation.getCurrentPosition(pos => {
       userLoc = { lat: pos.coords.latitude, lon: pos.coords.longitude };
       locBtn.setAttribute("aria-pressed", "true"); locBtn.textContent = "📍 Konum açık";
-      locMsg.textContent = "Sadece soruları cevaplamak için kullanılır, kaydedilmez. Kapatmak için tekrar bas.";
+      locMsg.textContent = "Konum sadece soruyla birlikte gider, hiçbir yerde saklanmaz. Cevap metni bu cihazdaki sohbet kaydında durabilir. Kapatmak için tekrar bas.";
     }, () => { locMsg.textContent = "Konum izni verilmedi. İlçe adını yazarak da sorabilirsin."; },
     { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 });
   });
@@ -397,6 +397,8 @@
     const markers = new Map();
 
     function drawRows() {
+      const fe = document.activeElement, fRow = rowsEl.contains(fe) && fe.closest(".bus-row");
+      const fKey = fRow && fRow.dataset.k, fCls = fRow && (fe.classList.contains("star") ? "star" : "follow");
       rowsEl.innerHTML = buses.length ? buses.map(b =>
         '<div class="bus-row' + (busKey(b) === follow ? " on" : "") + '" data-k="' + esc(busKey(b)) + '">' +
         '<span class="ln">' + esc(b.line) + '</span><span class="info">' + esc(etaText(b)) + (b.accessible ? " · ♿" : "") +
@@ -405,6 +407,7 @@
         (b.lat != null ? "<button type=\"button\" class=\"follow\">" + (busKey(b) === follow ? "Takipte" : "📍 Takip et") + "</button>" : "") +
         "</div>").join("") : '<div class="map-note">Şu an bu durağa yaklaşan otobüs görünmüyor.</div>';
       rowsEl.style.display = "grid"; rowsEl.style.gap = "6px";
+      if (fKey) [...rowsEl.querySelectorAll(".bus-row")].find(r => r.dataset.k === fKey)?.querySelector("." + fCls)?.focus();
     }
     rowsEl.addEventListener("click", e => {
       const row = e.target.closest(".bus-row"); if (!row || !e.target.closest("button.follow")) return;
@@ -473,7 +476,7 @@
     if (live.token) liveTimer = setInterval(refresh, LIVE_EVERY);
   }
 
-  function renderPlaces(el, raw, origin) {
+  function renderPlaces(el, raw, origin, restoredNearMe) {
     const places = raw.map(p => ({ ...p, d: origin ? km(origin, p) : p.distance_km }))
       .sort((a, b) => (a.d ?? 1e9) - (b.d ?? 1e9));
     const box = document.createElement("div");
@@ -488,7 +491,9 @@
       '<a href="' + esc(routeUrl(p)) + '" target="_blank" rel="noopener">🧭 Yol tarifi</a>' +
       "</div></div>").join("") +
       '<div class="map" role="img" aria-label="Eczanelerin haritası"></div>' +
-      '<div class="map-note">' + (origin ? "Mavi nokta senin konumun. " : "Uzaklıklar ilçe merkezine göre. ") +
+      '<div class="map-note">' + (origin ? "Mavi nokta senin konumun. " : restoredNearMe
+        ? "Konumuna göre sıralanmıştı; konum kaydedilmediği için uzaklık gösterilmiyor. "
+        : "Uzaklıklar ilçe merkezine göre. ") +
       "Bir noktaya basıp yol tarifi alabilirsin.</div>";
     el.appendChild(box);
     const mapEl = box.querySelector(".map");
@@ -587,7 +592,11 @@
   // Başka sekmede değişince bu sekme de güncellensin, birbirinin üstüne yazmasın.
   window.addEventListener("storage", e => {
     if (e.key === "izm:favs" || e.key === null) { favs = loadFavs(); drawHomeFavs(); refreshStars(); }
-    if (e.key && e.key.startsWith("izm:")) drawDrawer();
+    if (e.key === null || e.key === "izm:chats") {
+      // Açık sohbet başka sekmede silindiyse bu sekme onu yeniden kaydetmesin.
+      if (chatId && !loadChats().some(c => c.id === chatId)) { chatId = null; transcript = []; }
+    }
+    if (e.key === null || e.key.startsWith("izm:")) drawDrawer();
   });
   document.addEventListener("click", e => {
     const b = e.target.closest(".star"); if (!b) return;
@@ -652,14 +661,14 @@
     else if (t.dataset.chat) { openDrawer(false); openChat(loadChats()[+t.dataset.chat]); }
     else if (t.dataset.delchat) {
       const chats = loadChats(); const [gone] = chats.splice(+t.dataset.delchat, 1); store.set("chats", chats);
-      if (gone && gone.id === chatId) chatId = null;
       drawDrawer(); document.getElementById("close-drawer").focus();
+      if (gone && gone.id === chatId) newChat();  // açık sohbet silindiyse tekrar kaydedilmesin
     }
   });
   document.getElementById("new-chat").addEventListener("click", () => { openDrawer(false); newChat(); });
   document.getElementById("wipe").addEventListener("click", () => {
     if (!confirm("Bu cihazdaki tüm favoriler ve sohbetler silinsin mi? Bu geri alınamaz.")) return;
-    store.wipe(); favs = { stops: [], lines: [], pharmacies: [] }; chatId = null; drawDrawer(); newChat();
+    store.wipe(); storeOk = true; favs = { stops: [], lines: [], pharmacies: [] }; chatId = null; drawDrawer(); newChat();
   });
 
   // Sohbet kaydı: her cevaptan sonra bu cihazda güncellenir. Canlı harita jetonu saklanmaz.
@@ -695,7 +704,7 @@
       if (m.role === "user") { add("user", esc(m.content)); continue; }
       const el = add("bot", fmt(m.content));
       try {
-        if (Array.isArray(m.places) && m.places.length) renderPlaces(el, m.places, null);
+        if (Array.isArray(m.places) && m.places.length) renderPlaces(el, m.places, null, !!m.nearMe);
         if (m.trip && m.trip.origin && m.trip.destination) renderTrip(el, m.trip);
       } catch {}
       if (m.live) {
@@ -738,7 +747,7 @@
   async function ask(text) {
     if (busy || !text.trim()) return;
     busy = true; send.disabled = true;
-    const myGen = gen;
+    const myGen = gen, base = history.length, usedLoc = !!userLoc;
     history.push({ role: "user", content: text.trim() });
     add("user", esc(text.trim()));
     const wait = add("bot", '<span class="dots" aria-label="Cevap yazılıyor"><span></span><span></span><span></span></span>');
@@ -749,21 +758,22 @@
       });
       const data = await res.json().catch(() => ({}));
       if (myGen !== gen) return;  // kullanıcı bu arada başka sohbete geçti: cevabı oraya yazma
-      if (!res.ok) throw new Error(data.error || "Bir sorun oluştu, tekrar dener misin?");
+      if (!res.ok || typeof data.answer !== "string") throw new Error(data.error || "Bir sorun oluştu, tekrar dener misin?");
       history.push({ role: "assistant", content: data.answer });
       const tools = [...new Set(data.tools || [])].map(t => "<span>" + esc(TOOL_NAMES[t] || t) + "</span>").join("");
       wait.innerHTML = fmt(data.answer) + (tools ? '<div class="tools">' + tools + "</div>" : "");
       if (Array.isArray(data.places) && data.places.length) renderPlaces(wait, data.places, userLoc);
       if (data.trip && data.trip.origin && data.trip.destination) renderTrip(wait, data.trip);
       if (data.live && Array.isArray(data.live.stops) && data.live.stops.length) renderLive(wait, data.live);
-      // Kullanıcının kendi konumundan başlayan tarif saklanmaz (konum kaydedilmez sözü).
+      // Konum saklanmaz: kullanıcının konumundan başlayan tarif ve konuma göre ölçülen uzaklıklar kayda girmez.
       const trip = data.trip && !(data.trip.origin && data.trip.origin.kind === "user") ? data.trip : null;
+      const places = Array.isArray(data.places) ? data.places.map(p => usedLoc ? { ...p, distance_km: null } : p) : [];
       transcript.push({ role: "user", content: text.trim() }, { role: "assistant", content: data.answer,
-        places: Array.isArray(data.places) ? data.places : [], trip, live: !!data.live });
+        places, trip, live: !!data.live, ...(usedLoc && places.length ? { nearMe: true } : {}) });
       try { saveChat(); } catch {}
     } catch (e) {
       if (myGen !== gen) return;
-      history.pop();
+      history.length = base;  // cevapsız kalan soruyu da geri al
       wait.classList.add("error");
       wait.textContent = e.message === "Failed to fetch" ? "Sunucuya ulaşılamadı. İnternet bağlantını kontrol et." : e.message;
     } finally {
