@@ -122,7 +122,7 @@ async def _get_json(url: str, *, source: str, params: dict[str, Any] | None, ret
                                                 message=f"{source} bu kayıt için veri döndürmedi (404)."))
             if r.status_code >= 400:
                 # 4xx tekrar denemekle düzelmez: Render loglarında nedenini görebilmek için gövdenin başını yaz.
-                log.warning("source %s HTTP %s: %s", source, r.status_code, r.text[:300].replace("\n", " "))
+                log.warning("source %s HTTP %s: %s", source, r.status_code, " ".join(r.text[:300].split()))
                 raise SourceFailure(SourceError(
                     code=ErrorCode.SOURCE_UNAVAILABLE if r.status_code == 429 else ErrorCode.BAD_RESPONSE,
                     source=source, retryable=r.status_code == 429,

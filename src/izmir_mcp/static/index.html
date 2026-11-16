@@ -771,6 +771,8 @@
   sideQ.addEventListener("keydown", e => { if (e.key === "Escape") { e.stopPropagation(); toggleSearch(false); searchBtn.focus(); } });
   drawerEl.addEventListener("click", e => {
     const t = e.target.closest("button"); if (!t || !drawerEl.contains(t)) return;
+    // Arama açıkken bölümler hep açık gösterilir; tıklama gizlice ters durumu kaydetmesin.
+    if ((t.dataset.sec || t.dataset.cat) && ui.q) return;
     if (t.dataset.sec) { ui[t.dataset.sec] = !ui[t.dataset.sec]; saveUi(); drawDrawer(); t.focus(); return; }
     if (t.dataset.cat) { ui.cats[t.dataset.cat] = !ui.cats[t.dataset.cat]; saveUi(); drawDrawer();
       drawerEl.querySelector('[data-cat="' + t.dataset.cat + '"]')?.focus(); return; }
@@ -802,13 +804,17 @@
   }
 
   // Sohbet kaydı: her cevaptan sonra bu cihazda güncellenir. Canlı harita jetonu saklanmaz.
-  let chatId = null, transcript = [], storeOk = true, gen = 0;
+  let chatId = null, transcript = [], storeOk = true, gen = 0, savedAt = 0;
   function saveChat() {
     if (!transcript.length) return;
     const chats = loadChats();
+    let prev = chatId && chats.find(c => c.id === chatId);
+    // Aynı sohbet başka sekmede (ör. kopyalanan sekme) değiştiyse üstüne yazma, ayrı sohbet olarak kaydet.
+    const title = prev ? prev.title : transcript[0].content.slice(0, 60);
+    if (prev && prev.at !== savedAt) { chatId = null; prev = null; }
     if (!chatId) { chatId = Date.now().toString(36) + Math.random().toString(36).slice(2, 6); cur.set(chatId); }
-    const prev = chats.find(c => c.id === chatId);
-    const entry = { id: chatId, title: prev ? prev.title : transcript[0].content.slice(0, 60), at: Date.now(),
+    savedAt = Date.now();
+    const entry = { id: chatId, title, at: savedAt,
       msgs: transcript.slice(-CHAT_MSGS) };
     const list = [entry, ...chats.filter(c => c.id !== chatId)].slice(0, CHAT_MAX);
     // Yer yetmezse cihaza en eski sohbetler olmadan yazılır; tam liste bu oturumda bellekte kalır.
@@ -827,17 +833,15 @@
   }
   function openChat(c) {
     if (!c) return;
-    gen++; busy = false; send.disabled = false; stopLive(); history.length = 0; transcript = c.msgs.slice(); chatId = c.id; cur.set(c.id); drawDrawer();
+    gen++; busy = false; send.disabled = false; stopLive(); history.length = 0; transcript = c.msgs.slice(); chatId = c.id; savedAt = c.at; cur.set(c.id); drawDrawer();
     log.innerHTML = "";
     for (const m of c.msgs) {
       history.push({ role: m.role, content: m.content });
       if (m.role === "user") { add("user", esc(m.content)); continue; }
       const el = add("bot", fmt(m.content));
-      try {
-        if (Array.isArray(m.places) && m.places.length) renderPlaces(el, m.places, null, !!m.nearMe);
-        if (m.trip && m.trip.origin && m.trip.destination) renderTrip(el, m.trip);
-        if (m.weather && typeof m.weather.place === "string") renderWeatherFav(el, m.weather.place);
-      } catch {}
+      try { if (Array.isArray(m.places) && m.places.length) renderPlaces(el, m.places, null, !!m.nearMe); } catch {}
+      try { if (m.trip && m.trip.origin && m.trip.destination) renderTrip(el, m.trip); } catch {}
+      try { if (m.weather && typeof m.weather.place === "string") renderWeatherFav(el, m.weather.place); } catch {}
       if (m.live) {
         const n = document.createElement("div"); n.className = "map-note";
         n.textContent = "🚌 Bu cevapta canlı otobüs haritası vardı. Güncel konumlar için soruyu tekrar sor.";
