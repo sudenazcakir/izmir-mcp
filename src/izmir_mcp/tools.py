@@ -5,6 +5,7 @@ from datetime import UTC, datetime
 
 from . import db
 from .breaker import BreakerState, breakers
+from .cache import SOURCE_REDIS, store
 from .config import get_settings
 from .districts import DISTRICTS, find_district
 from .geo import haversine_km
@@ -200,7 +201,12 @@ async def find_pharmacies(district: str | None = None, on_duty: bool = True, lim
     try:
         items, cached, stale = await (pharmacy.on_duty_pharmacies() if on_duty else pharmacy.all_pharmacies())
     except SourceFailure as f:
-        return PharmacyResult(district=d.name if d else None, on_duty=on_duty, meta=meta, error=f.error)
+        error = f.error
+        if on_duty and error.hint is None:
+            error = error.model_copy(update={"hint": (
+                "Bugünün nöbet listesi alınamadı. Önceki günün listesi bugün geçerli olmadığı için gösterilmiyor; "
+                "kullanıcıyı eczane kapılarındaki nöbet listesine ya da İzmir Eczacı Odası'na yönlendir.")})
+        return PharmacyResult(district=d.name if d else None, on_duty=on_duty, meta=meta, error=error)
 
     ref_lat, ref_lon = (lat, lon) if lat is not None and lon is not None else (d.lat, d.lon)
     for p in items:
@@ -372,7 +378,7 @@ def _probes() -> dict[str, object]:
     base = get_settings().izmir_api_base
     konak = find_district("Konak")
     lat, lon = konak.lat, konak.lon
-    return {
+    probes = {
         eshot.SOURCE: lambda: get_json(f"{base}/api/iztek/duragayaklasanotobusler/{PROBE_STOP_ID}",
                                        source=eshot.SOURCE, retries=0),
         eshot.SOURCE_STOPS: lambda: get_json(
@@ -390,6 +396,9 @@ def _probes() -> dict[str, object]:
             f"{get_settings().open_meteo_air_base}/v1/air-quality", source=air.SOURCE_OPEN_METEO, retries=0,
             params={"latitude": f"{lat:.4f}", "longitude": f"{lon:.4f}", "current": "european_aqi"}),
     }
+    if store.enabled():  # REDIS_URL yoksa önbellek yalnız bellekte; listede gösterme
+        probes[SOURCE_REDIS] = store.ping
+    return probes
 
 
 def _status_of(source: str) -> SourceStatus:

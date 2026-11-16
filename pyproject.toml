@@ -13,6 +13,7 @@ dependencies = [
     "psycopg[binary]>=3.2",
     "anthropic>=2.8,<3",
     "uvicorn>=0.30",
+    "redis>=5",
 ]
 
 [project.optional-dependencies]

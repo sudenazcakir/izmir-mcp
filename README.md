@@ -160,7 +160,7 @@ src/izmir_mcp/
   static/index.html    sohbet sayfası
   tools.py             araçların iş mantığı
   models.py            ortak Pydantic modelleri (Arrival, Pharmacy, AirReading, Meta, SourceError…)
-  http.py, cache.py    zaman aşımı + tekrar deneme, TTL önbellek + son iyi değer (2. haftada Redis)
+  http.py, cache.py    zaman aşımı + tekrar deneme; iki katmanlı önbellek (bellek + REDIS_URL varsa Upstash Redis), son iyi değer
   sources/             kaynak başına adaptör (eshot, pharmacy, transit_static, air)
   breaker.py           kaynak başına devre kesici (get_source_status bunu raporlar)
   districts.py         30 ilçe ve merkez koordinatı

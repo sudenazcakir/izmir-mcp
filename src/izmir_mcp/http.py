@@ -7,7 +7,7 @@ from typing import Any
 import httpx
 
 from .breaker import breakers
-from .cache import cache
+from .cache import store
 from .config import get_settings
 from .models import ErrorCode, SourceError
 
@@ -112,19 +112,22 @@ async def _get_json(url: str, *, source: str, params: dict[str, Any] | None, ret
     )) from last_exc
 
 
-async def get_json_cached(url: str, *, source: str, ttl: float, params: dict[str, Any] | None = None
-                          ) -> tuple[Any, bool, bool]:
-    """(veri, önbellekten_mi, bayat_mi). Kaynak çökerse son iyi veriye düşer."""
+async def get_json_cached(url: str, *, source: str, ttl: float, params: dict[str, Any] | None = None,
+                          stale_not_before: float | None = None) -> tuple[Any, bool, bool]:
+    """(veri, önbellekten_mi, bayat_mi). Kaynak çökerse son iyi veriye düşer (bellek, sonra Redis).
+
+    stale_not_before (epoch): son iyi veri bu andan önce alınmışsa kullanılmaz, hata döner.
+    """
     key = f"{url}?{sorted((params or {}).items())}"
-    hit = cache.get(key)
+    hit = await store.get(key)
     if hit is not None:
         return hit, True, False
     try:
         data = await get_json(url, source=source, params=params)
     except SourceFailure:
-        stale = cache.get_stale(key)
+        stale = await store.get_stale(key, not_before=stale_not_before)
         if stale is not None:
             return stale, True, True
         raise
-    cache.set(key, data, ttl)
+    await store.set(key, data, ttl)
     return data, False, False
