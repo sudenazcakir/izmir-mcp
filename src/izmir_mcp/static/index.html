@@ -132,7 +132,9 @@
     .drawer { width: 288px; transform: none; visibility: visible; box-shadow: none; transition: none;
       background: color-mix(in srgb, var(--solid) 82%, var(--bg)); }
     .scrim, #open-drawer, #close-drawer { display: none; }
-    header .logo, header h1 { display: none; }  /* ad ve logo zaten kenar çubuğunda */
+    header .logo, header h1 { display: none; }
+    /* ad, logo ve favoriler zaten kenar çubuğunda; ana ekranda tekrar gösterilmez */
+    .welcome .favs-home { display: none; }
     header p { font-size: 13.5px; }
     .tower { right: max(-40px, calc(50% - 560px - 144px)); }
   }
@@ -152,11 +154,18 @@
   .count { margin-left: auto; min-width: 20px; text-align: center; font-size: 11px; letter-spacing: 0; color: var(--fg);
     background: var(--accent-soft); border-radius: 999px; padding: 0 7px; }
   .count:empty { display: none; }
-  .seg { display: flex; gap: 3px; background: var(--bg); border: 1px solid var(--line); border-radius: 11px; padding: 3px; margin: 2px 2px 6px; }
-  .seg button { flex: 1; min-width: 0; font: inherit; font-size: 12.5px; border: 0; background: none; border-radius: 8px;
-    padding: 5px 2px; color: var(--muted); cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .seg button[aria-selected="true"] { background: var(--solid); color: var(--fg); font-weight: 600; box-shadow: 0 1px 3px rgba(0,0,0,.1); }
-  .seg button b { font-weight: 600; opacity: .6; margin-left: 2px; }
+  .fav-chips { display: flex; flex-wrap: wrap; gap: 6px; padding: 2px 4px 4px; }
+  .fchip { display: inline-flex; align-items: center; gap: 5px; max-width: 100%; font: inherit; font-size: 13px; color: var(--fg);
+    background: var(--solid); border: 1px solid var(--line); border-radius: 999px; padding: 4px 10px; cursor: pointer; }
+  .fchip:hover { border-color: var(--accent); }
+  .fchip span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 150px; }
+  .fchip i { font-style: normal; font-size: 12px; }
+  .fchip.del { border-style: dashed; }
+  .fchip.del::after { content: "✕"; font-size: 11px; color: var(--muted); margin-left: 2px; }
+  .fchip.more { color: var(--muted); background: transparent; }
+  .fav-tools { display: flex; justify-content: flex-end; padding: 0 6px; }
+  .link-btn { font: inherit; font-size: 12px; color: var(--muted); background: none; border: 0; padding: 2px 4px; cursor: pointer; }
+  .link-btn:hover { color: var(--fg); text-decoration: underline; }
   .row { display: flex; align-items: center; gap: 1px; border-radius: 10px; }
   .row:hover, .row:focus-within { background: color-mix(in srgb, var(--fg) 6%, transparent); }
   .row.on { background: var(--accent-soft); }
@@ -292,8 +301,8 @@
     <section class="side-sec">
       <button class="sec-head" type="button" data-sec="favs" aria-expanded="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>Favoriler<span class="count" id="fav-total"></span></button>
       <div class="sec-body">
-        <div class="seg" role="tablist" aria-label="Favori türü" id="fav-tabs"></div>
-        <div id="fav-list" role="tabpanel"></div>
+        <div class="fav-chips" id="fav-list"></div>
+        <div class="fav-tools" id="fav-tools"></div>
       </div>
     </section>
     <section class="side-sec">
@@ -664,8 +673,8 @@
   const askFor = {
     stops: f => f.key + " durağına yaklaşan otobüsler nerede?",
     lines: f => f.key + " hattında güncel bir duyuru var mı?",
-    pharmacies: f => (f.name || f.key.split("|")[0]) + " eczanesi" + (f.address ? " (" + f.address + ")" : "") +
-      " bugün nöbetçi mi? Değilse aynı bölgedeki nöbetçi eczaneler hangileri?",
+    pharmacies: f => { const n = f.name || f.key.split("|")[0]; return n + (/eczane/i.test(n) ? "" : " eczanesi") +
+      (f.address ? " (" + f.address + ")" : "") + " bugün nöbetçi mi? Değilse aynı bölgedeki nöbetçi eczaneler hangileri?"; },
   };
   // Açık sohbet sayfa yenilenince geri gelsin (yalnız bu sekmede).
   const cur = {
@@ -707,23 +716,19 @@
   document.addEventListener("keydown", e => { if (e.key === "Escape") openDrawer(false); });
 
   const KINDS = { stops: ["🚏", "Duraklar"], lines: ["🚌", "Hatlar"], pharmacies: ["💊", "Eczaneler"] };
-  const FAV_SHOW = 5;
+  const FAV_SHOW = 6;
   const ui = (() => { const u = store.get("ui", {}); const o = u && typeof u === "object" ? u : {};
-    return { favs: o.favs !== false, chats: o.chats !== false, tab: KINDS[o.tab] ? o.tab : null, all: false }; })();
-  const saveUi = () => store.set("ui", { favs: ui.favs, chats: ui.chats, tab: ui.tab });
+    return { favs: o.favs !== false, chats: o.chats !== false, all: false, edit: false }; })();
+  const saveUi = () => store.set("ui", { favs: ui.favs, chats: ui.chats });
   const act = (label, html, attrs) => '<button class="row-act" type="button" ' + attrs + ' aria-label="' + esc(label) + '" title="' +
     esc(label) + '">' + html + "</button>";
-  function favRow(kind, f, i) {
+  // Favori: küçük bir etiket. Dokununca soruyu sorar; "Düzenle" modunda dokununca siler.
+  function favChip(kind, f, i) {
     const name = kind === "pharmacies" ? (f.name || f.key.split("|")[0]) : f.key;
-    const sub = kind === "pharmacies" ? f.address : f.name;
-    return '<div class="row"><button class="row-go" type="button" data-ask="' + kind + '" data-i="' + i + '" title="Sor: ' +
-      esc(askFor[kind](f)) + '"><span class="ic">' + KINDS[kind][0] + '</span><span class="t">' + esc(name) +
-      (sub ? "<small>" + esc(sub) + "</small>" : "") + "</span></button>" +
-      (kind === "pharmacies" && f.phone ? '<a class="row-act" href="tel:' + esc(f.phone.replace(/[^\d+]/g, "")) +
-        '" aria-label="' + esc(name + " eczanesini ara") + '" title="Ara">📞</a>' : "") +
-      (kind === "pharmacies" && f.lat != null ? '<a class="row-act" href="' + esc(routeUrl(f)) +
-        '" target="_blank" rel="noopener" aria-label="' + esc(name + " için yol tarifi") + '" title="Yol tarifi">🧭</a>' : "") +
-      act(name + " favorisini sil", "✕", 'data-del="' + kind + '" data-i="' + i + '"') + "</div>";
+    const label = ui.edit ? name + " favorisini sil" : "Sor: " + askFor[kind](f);
+    return '<button type="button" class="fchip' + (ui.edit ? " del" : "") + '" ' +
+      (ui.edit ? 'data-del="' : 'data-ask="') + kind + '" data-i="' + i + '" aria-label="' + esc(label) + '" title="' +
+      esc(label) + '"><i>' + KINDS[kind][0] + "</i><span>" + esc(name) + "</span></button>";
   }
   function dayLabel(at) {
     const d = new Date(at), t = new Date(); t.setHours(0, 0, 0, 0);
@@ -732,18 +737,17 @@
   }
   function drawDrawer() {
     const total = favs.stops.length + favs.lines.length + favs.pharmacies.length;
-    let tab = ui.tab && (favs[ui.tab].length || !total) ? ui.tab : Object.keys(KINDS).find(k => favs[k].length) || "stops";
     document.getElementById("fav-total").textContent = total || "";
-    document.getElementById("fav-tabs").innerHTML = Object.entries(KINDS).map(([k, [ic, label]]) =>
-      '<button type="button" role="tab" data-tab="' + k + '" aria-selected="' + (k === tab) + '"' + (k === tab ? "" : ' tabindex="-1"') +
-      ">" + label + (favs[k].length ? "<b>" + favs[k].length + "</b>" : "") + "</button>").join("");
-    const list = favs[tab], shown = ui.all ? list : list.slice(0, FAV_SHOW);
-    const hint = { stops: "Canlı otobüs kartında ☆ Kaydet'e bas.", lines: "Otobüs satırındaki ☆ ile hat ekle.",
-      pharmacies: "Eczane kartında ☆ Kaydet'e bas." };
-    document.getElementById("fav-list").innerHTML = list.length
-      ? shown.map(f => favRow(tab, f, list.indexOf(f))).join("") + (list.length > FAV_SHOW
-        ? '<button class="more" type="button" data-more>' + (ui.all ? "Daha az göster" : "+" + (list.length - FAV_SHOW) + " tane daha") + "</button>" : "")
-      : '<div class="empty">' + hint[tab] + "</div>";
+    const all = Object.keys(KINDS).flatMap(k => favs[k].map((f, i) => [k, f, i]));
+    if (!total) ui.edit = false;
+    const shown = ui.all || ui.edit ? all : all.slice(0, FAV_SHOW);
+    document.getElementById("fav-list").innerHTML = total
+      ? shown.map(([k, f, i]) => favChip(k, f, i)).join("") + (all.length > shown.length
+        ? '<button type="button" class="fchip more" data-more aria-label="Tüm favorileri göster">+' + (all.length - shown.length) + "</button>" : "")
+      : '<div class="empty">Kartlardaki ☆ ile durak, hat ya da eczane ekle; buradan tek dokunuşla sorarsın.</div>';
+    document.getElementById("fav-tools").innerHTML = total
+      ? (ui.all && !ui.edit && all.length > FAV_SHOW ? '<button type="button" class="link-btn" data-more>Daha az</button>' : "") +
+        '<button type="button" class="link-btn" data-edit>' + (ui.edit ? "Bitti" : "Düzenle") + "</button>" : "";
     const chats = loadChats();
     document.getElementById("chat-total").textContent = chats.length || "";
     let last = "";
@@ -762,13 +766,13 @@
   drawerEl.addEventListener("click", e => {
     const t = e.target.closest("button"); if (!t || !drawerEl.contains(t)) return;
     if (t.dataset.sec) { ui[t.dataset.sec] = !ui[t.dataset.sec]; saveUi(); drawDrawer(); t.focus(); return; }
-    if (t.dataset.tab) { ui.tab = t.dataset.tab; ui.all = false; saveUi(); drawDrawer();
-      drawerEl.querySelector('[data-tab="' + ui.tab + '"]')?.focus(); return; }
     if ("more" in t.dataset) { ui.all = !ui.all; drawDrawer(); return; }
+    if ("edit" in t.dataset) { ui.edit = !ui.edit; drawDrawer(); drawerEl.querySelector("[data-edit]")?.focus(); return; }
     if (t.dataset.wipe) { wipe(t.dataset.wipe); return; }
     if (t.dataset.del) {
       favs = loadFavs(); favs[t.dataset.del].splice(+t.dataset.i, 1); store.set("favs", favs);
-      drawDrawer(); drawHomeFavs(); refreshStars(); focusPanel();
+      drawDrawer(); drawHomeFavs(); refreshStars();
+      (drawerEl.querySelector(".fchip") || drawerEl.querySelector("[data-edit]") || document.getElementById("new-chat")).focus();
     }
     else if (t.dataset.ask) { const f = favs[t.dataset.ask][+t.dataset.i]; openDrawer(false); newChat(); ask(askFor[t.dataset.ask](f)); }
     else if (t.dataset.chat) { openDrawer(false); openChat(loadChats()[+t.dataset.chat]); if (wide.matches) q.focus(); }
@@ -777,12 +781,6 @@
       drawDrawer(); focusPanel();
       if (gone && gone.id === chatId) newChat();  // açık sohbet silindiyse tekrar kaydedilmesin
     }
-  });
-  document.getElementById("fav-tabs").addEventListener("keydown", e => {
-    if (e.key !== "ArrowRight" && e.key !== "ArrowLeft") return;
-    const ks = Object.keys(KINDS), i = ks.indexOf(e.target.dataset.tab); if (i < 0) return;
-    ui.tab = ks[(i + (e.key === "ArrowRight" ? 1 : ks.length - 1)) % ks.length]; ui.all = false; saveUi(); drawDrawer();
-    drawerEl.querySelector('[data-tab="' + ui.tab + '"]')?.focus(); e.preventDefault();
   });
   document.getElementById("new-chat").addEventListener("click", () => { openDrawer(false); newChat(); });
   // Kayıtları ayrı ayrı silebilme: yalnız sohbetler, yalnız favoriler ya da hepsi.
