@@ -68,6 +68,31 @@
   }
   .send:disabled { opacity: .5; cursor: default; }
   .foot { max-width: 760px; margin: 6px auto 0; font-size: 12px; color: var(--muted); }
+  .loc-row { max-width: 760px; margin: 0 auto 8px; display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); }
+  .loc-btn {
+    font: inherit; font-size: 13px; cursor: pointer; color: var(--fg); background: var(--bg);
+    border: 1px solid var(--line); border-radius: 999px; padding: 4px 12px;
+  }
+  .loc-btn { flex: none; white-space: nowrap; }
+  .loc-btn[aria-pressed="true"] { border-color: var(--accent); background: var(--accent-soft); }
+  .places { white-space: normal; margin-top: 12px; display: grid; gap: 8px; }
+  .place { border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; background: var(--bg); }
+  .place .top { display: flex; gap: 10px; align-items: baseline; }
+  .place .num { flex: none; width: 22px; height: 22px; border-radius: 50%; background: var(--accent); color: var(--accent-ink);
+    font-size: 12px; font-weight: 700; display: inline-flex; align-items: center; justify-content: center; }
+  .place .name { font-weight: 600; }
+  .place .dist { margin-left: auto; color: var(--muted); font-size: 13px; white-space: nowrap; }
+  .place .addr { color: var(--muted); font-size: 13.5px; margin: 2px 0 0 32px; }
+  .place .acts { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0 0 32px; }
+  .place .acts a { font-size: 13px; text-decoration: none; color: var(--accent); border: 1px solid var(--line);
+    border-radius: 999px; padding: 3px 10px; background: var(--surface); }
+  .place .acts a:hover { border-color: var(--accent); }
+  .map { height: 260px; border-radius: 12px; border: 1px solid var(--line); overflow: hidden; }
+  .map-note { font-size: 12px; color: var(--muted); }
+  .pin { width: 26px; height: 26px; border-radius: 50%; background: #0a6a86; color: #fff; border: 2px solid #fff;
+    box-shadow: 0 1px 4px rgba(0,0,0,.4); font: 700 12px/22px system-ui, sans-serif; text-align: center; }
+  .me { width: 16px; height: 16px; border-radius: 50%; background: #2f7bf6; border: 3px solid #fff; box-shadow: 0 0 0 4px rgba(47,123,246,.3); }
+  .leaflet-popup-content a { font-weight: 600; }
 </style>
 </head>
 <body>
@@ -84,6 +109,7 @@
       <div class="examples">
         <button type="button">Bornova Metro durağına sıradaki otobüs ne zaman?</button>
         <button type="button">Buca'da bugün nöbetçi eczane hangisi?</button>
+        <button type="button">Bana en yakın nöbetçi eczane hangisi?</button>
         <button type="button">Bornova'da hava kalitesi nasıl, akşam dışarı çıkılır mı?</button>
         <button type="button">Konak İskele'ye hangi otobüsler yaklaşıyor?</button>
       </div>
@@ -91,6 +117,10 @@
   </div>
 </main>
 <form id="form">
+  <div class="loc-row">
+    <button class="loc-btn" id="loc" type="button" aria-pressed="false">📍 Konumumu kullan</button>
+    <span id="locmsg">En yakın eczaneleri sana göre sıralamak için</span>
+  </div>
   <div class="bar">
     <textarea id="q" rows="1" maxlength="1000" placeholder="Sorunu yaz…" aria-label="Soru"></textarea>
     <button class="send" id="send" type="submit">Sor</button>
@@ -99,6 +129,93 @@
 </form>
 <script>
 (() => {
+  const LEAFLET = "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/";
+  let userLoc = null;  // {lat, lon}; yalnız bu sayfada tutulur, kaydedilmez
+  let leafletReady = null;
+
+  const locBtn = document.getElementById("loc"), locMsg = document.getElementById("locmsg");
+  locBtn.addEventListener("click", () => {
+    if (userLoc) {
+      userLoc = null; locBtn.setAttribute("aria-pressed", "false"); locBtn.textContent = "📍 Konumumu kullan";
+      locMsg.textContent = "Konum kapalı"; return;
+    }
+    if (!navigator.geolocation) { locMsg.textContent = "Tarayıcın konum paylaşmayı desteklemiyor."; return; }
+    locMsg.textContent = "Konum alınıyor…";
+    navigator.geolocation.getCurrentPosition(pos => {
+      userLoc = { lat: pos.coords.latitude, lon: pos.coords.longitude };
+      locBtn.setAttribute("aria-pressed", "true"); locBtn.textContent = "📍 Konum açık";
+      locMsg.textContent = "Sadece soruları cevaplamak için kullanılır, kaydedilmez. Kapatmak için tekrar bas.";
+    }, () => { locMsg.textContent = "Konum izni verilmedi. İlçe adını yazarak da sorabilirsin."; },
+    { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 });
+  });
+
+  function km(a, b) {
+    const r = Math.PI / 180, dLat = (b.lat - a.lat) * r, dLon = (b.lon - a.lon) * r;
+    const h = Math.sin(dLat / 2) ** 2 + Math.cos(a.lat * r) * Math.cos(b.lat * r) * Math.sin(dLon / 2) ** 2;
+    return 12742 * Math.asin(Math.sqrt(h));
+  }
+  const fmtKm = d => d == null ? "" : d < 1 ? Math.round(d * 1000) + " m" : d.toFixed(1).replace(".", ",") + " km";
+  const ll = p => encodeURIComponent(p.lat + "," + p.lon);
+  const showUrl = p => "https://www.google.com/maps/search/?api=1&query=" + ll(p);
+  const routeUrl = p => "https://www.google.com/maps/dir/?api=1&destination=" + ll(p) +
+    (userLoc ? "&origin=" + ll(userLoc) : "");
+
+  function loadLeaflet() {
+    if (window.L) return Promise.resolve();
+    if (leafletReady) return leafletReady;
+    leafletReady = new Promise((ok, fail) => {
+      const css = document.createElement("link");
+      css.rel = "stylesheet"; css.href = LEAFLET + "leaflet.min.css";
+      document.head.appendChild(css);
+      const js = document.createElement("script");
+      js.src = LEAFLET + "leaflet.min.js"; js.onload = ok; js.onerror = fail;
+      document.head.appendChild(js);
+    });
+    return leafletReady;
+  }
+
+  function renderPlaces(el, raw, origin) {
+    const places = raw.map(p => ({ ...p, d: origin ? km(origin, p) : p.distance_km }))
+      .sort((a, b) => (a.d ?? 1e9) - (b.d ?? 1e9));
+    const box = document.createElement("div");
+    box.className = "places";
+    box.innerHTML = places.map((p, i) =>
+      '<div class="place"><div class="top"><span class="num">' + (i + 1) + '</span><span class="name">' + esc(p.name) +
+      '</span><span class="dist">' + esc(fmtKm(p.d)) + "</span></div>" +
+      (p.address ? '<div class="addr">' + esc(p.address) + "</div>" : "") +
+      '<div class="acts">' +
+      (p.phone ? '<a href="tel:' + esc(p.phone.replace(/[^\d+]/g, "")) + '">📞 Ara</a>' : "") +
+      '<a href="' + esc(showUrl(p)) + '" target="_blank" rel="noopener">🗺️ Haritada göster</a>' +
+      '<a href="' + esc(routeUrl(p)) + '" target="_blank" rel="noopener">🧭 Yol tarifi</a>' +
+      "</div></div>").join("") +
+      '<div class="map" role="img" aria-label="Eczanelerin haritası"></div>' +
+      '<div class="map-note">' + (origin ? "Mavi nokta senin konumun. " : "Uzaklıklar ilçe merkezine göre. ") +
+      "Bir noktaya basıp yol tarifi alabilirsin.</div>";
+    el.appendChild(box);
+    const mapEl = box.querySelector(".map");
+    loadLeaflet().then(() => {
+      const map = L.map(mapEl, { scrollWheelZoom: false });
+      L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+        maxZoom: 19, attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+      }).addTo(map);
+      const pts = [];
+      places.forEach((p, i) => {
+        const icon = L.divIcon({ className: "", html: '<div class="pin">' + (i + 1) + "</div>", iconSize: [26, 26], iconAnchor: [13, 13] });
+        L.marker([p.lat, p.lon], { icon, title: p.name }).addTo(map).bindPopup(
+          "<b>" + esc(p.name) + "</b>" + (p.d != null ? "<br>" + esc(fmtKm(p.d)) : "") +
+          '<br><a href="' + esc(routeUrl(p)) + '" target="_blank" rel="noopener">Yol tarifi al →</a>');
+        pts.push([p.lat, p.lon]);
+      });
+      if (origin) {
+        L.marker([origin.lat, origin.lon], { icon: L.divIcon({ className: "", html: '<div class="me"></div>', iconSize: [16, 16], iconAnchor: [8, 8] }),
+          title: "Konumun" }).addTo(map).bindPopup("Buradasın");
+        pts.push([origin.lat, origin.lon]);
+      }
+      map.fitBounds(pts, { paddingTopLeft: [56, 40], paddingBottomRight: [32, 40], maxZoom: 15 });
+      scroll.scrollTop = scroll.scrollHeight;
+    }).catch(() => { mapEl.remove(); });
+  }
+
   const TOOL_NAMES = {
     get_stop_arrivals: "Otobüs varışları", find_pharmacies: "Eczaneler",
     get_air_quality: "Hava kalitesi", get_source_status: "Kaynak durumu", get_announcements: "Duyurular",
@@ -131,13 +248,14 @@
     try {
       const res = await fetch("/api/chat", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ messages: history.slice(-12) }),
+        body: JSON.stringify({ messages: history.slice(-12), ...(userLoc ? { location: userLoc } : {}) }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || "Bir sorun oluştu, tekrar dener misin?");
       history.push({ role: "assistant", content: data.answer });
       const tools = [...new Set(data.tools || [])].map(t => "<span>" + esc(TOOL_NAMES[t] || t) + "</span>").join("");
       wait.innerHTML = fmt(data.answer) + (tools ? '<div class="tools">' + tools + "</div>" : "");
+      if (Array.isArray(data.places) && data.places.length) renderPlaces(wait, data.places, userLoc);
     } catch (e) {
       history.pop();
       wait.classList.add("error");

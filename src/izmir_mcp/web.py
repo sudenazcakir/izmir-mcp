@@ -14,7 +14,9 @@ Not: Claude API sunucumuza internetten bağlanır, bu yüzden /api/chat yalnızc
 from __future__ import annotations
 
 import hmac
+import json
 import logging
+import math
 import os
 import time
 from collections import deque
@@ -41,6 +43,10 @@ MAX_HISTORY_MESSAGES = 12
 MAX_RATE_KEYS = 10_000  # bellekte tutulan en fazla IP sayısı
 MAX_PAUSE_CONTINUES = 3
 RATE_WINDOW_SECONDS = 600
+MAX_PLACES = 10  # sayfaya haritada gösterilmek üzere giden en fazla eczane
+PLACE_TOOLS = {"find_pharmacies"}
+# İzmir ili ve çevresi; bunun dışındaki konumlar yok sayılır (yanlış/sahte koordinata karşı).
+IZMIR_BBOX = (37.6, 39.6, 25.8, 28.7)  # min_lat, max_lat, min_lon, max_lon
 
 SYSTEM_PROMPT = """Sen İzmir için bir şehir asistanısın. İzmir Büyükşehir Belediyesi'nin açık verisine bağlı araçların var: \
 ESHOT otobüslerinin duraklara tahmini varış süreleri, nöbetçi eczaneler, hava kalitesi ve veri kaynaklarının durumu. \
@@ -56,7 +62,16 @@ süreye göre ne zaman yeniden deneneceğini söyle.
 - Hava kalitesinde iki kaynağı ayır: Open-Meteo değerleri model tahminidir (saatlik); belediye istasyon değerleri \
 gerçek ölçümdür ama günlüktür ve birkaç gün gecikmeli gelebilir.
 - Cevaplar kısa ve telefonda okunacak kadar sade olsun: önce cevap, sonra gerekirse kısa bir liste.
-- İzmir dışı ya da araçlarının kapsamadığı konularda bunu dürüstçe söyle."""
+- İzmir dışı ya da araçlarının kapsamadığı konularda bunu dürüstçe söyle.
+- Eczane listesi verdiğinde sayfa onları haritada ve yol tarifi düğmeleriyle ayrıca gösteriyor; cevapta koordinat \
+ya da harita linki yazma, eczaneleri yakından uzağa sırala.
+- Kullanıcı "yakınımdaki", "bana en yakın" gibi konuma bağlı soruyor ama konum paylaşılmadıysa, sayfanın altındaki \
+"Konumumu kullan" düğmesine basmasını ya da ilçe/semt adını yazmasını iste."""
+
+LOCATION_NOTE = (
+    "Kullanıcı konumunu paylaştı: enlem {lat:.5f}, boylam {lon:.5f}. \"yakınımdaki\", \"en yakın\" gibi sorularda "
+    "ve ilçe söylenmediğinde araçlara bu lat/lon değerlerini ver; uzaklıkları kullanıcıya göre söyle."
+)
 
 
 class McpKeyMiddleware:
@@ -163,7 +178,62 @@ def clean_history(raw: Any) -> list[dict[str, str]] | None:
     return msgs
 
 
-async def ask_claude(client: anthropic.AsyncAnthropic, settings: Settings, history: list[dict[str, Any]]) -> dict[str, Any]:
+def parse_location(raw: Any) -> tuple[float, float] | None:
+    """Sayfanın gönderdiği {lat, lon} konumunu doğrular; İzmir dışını ve bozuk değerleri yok sayar."""
+    if not isinstance(raw, dict):
+        return None
+    lat, lon = raw.get("lat"), raw.get("lon")
+    for v in (lat, lon):
+        if isinstance(v, bool) or not isinstance(v, int | float):
+            return None
+    if not (math.isfinite(lat) and math.isfinite(lon)):
+        return None
+    min_lat, max_lat, min_lon, max_lon = IZMIR_BBOX
+    if not (min_lat <= lat <= max_lat and min_lon <= lon <= max_lon):
+        return None
+    return float(lat), float(lon)
+
+
+def _result_text(content: Any) -> str:
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        return "".join(getattr(b, "text", "") or "" for b in content)
+    return ""
+
+
+def extract_places(text: str) -> list[dict[str, Any]]:
+    """find_pharmacies sonucundaki (JSON) konumu bilinen eczaneleri harita için sadeleştirir."""
+    try:
+        data = json.loads(text)
+    except ValueError:
+        return []
+    items = data.get("pharmacies") if isinstance(data, dict) else None
+    places: list[dict[str, Any]] = []
+    for p in items if isinstance(items, list) else []:
+        if not isinstance(p, dict) or not isinstance(p.get("name"), str):
+            continue
+        loc = parse_location({"lat": p.get("lat"), "lon": p.get("lon")})
+        if loc is None:
+            continue
+        dist = p.get("distance_km")
+        places.append({
+            "name": p["name"][:120],
+            "address": p["address"][:200] if isinstance(p.get("address"), str) else None,
+            "phone": p["phone"][:40] if isinstance(p.get("phone"), str) else None,
+            "lat": loc[0],
+            "lon": loc[1],
+            "distance_km": dist if isinstance(dist, int | float) and not isinstance(dist, bool) else None,
+        })
+    return places[:MAX_PLACES]
+
+
+async def ask_claude(
+    client: anthropic.AsyncAnthropic,
+    settings: Settings,
+    history: list[dict[str, Any]],
+    location: tuple[float, float] | None = None,
+) -> dict[str, Any]:
     server: dict[str, Any] = {"type": "url", "url": settings.mcp_public_url, "name": MCP_SERVER_NAME}
     if settings.mcp_api_key:
         server["authorization_token"] = settings.mcp_api_key
@@ -171,11 +241,16 @@ async def ask_claude(client: anthropic.AsyncAnthropic, settings: Settings, histo
     messages: list[dict[str, Any]] = list(history)
     texts: list[str] = []
     tools_used: list[str] = []
+    tool_names: dict[str, str] = {}
+    places: list[dict[str, Any]] = []
+    system = SYSTEM_PROMPT
+    if location:
+        system += "\n\n" + LOCATION_NOTE.format(lat=location[0], lon=location[1])
     for _ in range(MAX_PAUSE_CONTINUES + 1):
         resp = await client.beta.messages.create(
             model=settings.chat_model,
             max_tokens=settings.chat_max_tokens,
-            system=SYSTEM_PROMPT,
+            system=system,
             messages=messages,
             mcp_servers=[server],
             tools=[{"type": "mcp_toolset", "mcp_server_name": MCP_SERVER_NAME}],
@@ -187,14 +262,21 @@ async def ask_claude(client: anthropic.AsyncAnthropic, settings: Settings, histo
                 texts.append(block.text)
             elif block.type == "mcp_tool_use":
                 tools_used.append(block.name)
+                tool_names[block.id] = block.name
+            elif block.type == "mcp_tool_result" and not block.is_error:
+                if tool_names.get(block.tool_use_id) in PLACE_TOOLS:
+                    found = extract_places(_result_text(block.content))
+                    if found:
+                        places = found  # birden çok arama olduysa sonuncusu (cevabın anlattığı) gösterilir
         if resp.stop_reason == "refusal":
-            return {"answer": "Bu soruya cevap veremiyorum. Başka bir şekilde sormayı dener misin?", "tools": tools_used}
+            return {"answer": "Bu soruya cevap veremiyorum. Başka bir şekilde sormayı dener misin?", "tools": tools_used,
+                    "places": []}
         if resp.stop_reason != "pause_turn":
             break
         # Uzun araç zinciri yarıda durdu: cevabı olduğu gibi geri verip devam ettir.
         messages = [*messages, {"role": "assistant", "content": resp.content}]
     answer = "\n\n".join(texts).strip() or "Şu an bir cevap üretemedim, lütfen tekrar dener misin?"
-    return {"answer": answer, "tools": tools_used}
+    return {"answer": answer, "tools": tools_used, "places": places}
 
 
 def create_app(settings: Settings | None = None, client: anthropic.AsyncAnthropic | None = None) -> ASGIApp:
@@ -227,8 +309,9 @@ def create_app(settings: Settings | None = None, client: anthropic.AsyncAnthropi
         history = clean_history(body.get("messages") if isinstance(body, dict) else None)
         if history is None:
             return JSONResponse({"error": f"Geçersiz istek (soru en fazla {MAX_QUESTION_CHARS} karakter)."}, status_code=400)
+        location = parse_location(body.get("location")) if isinstance(body, dict) else None
         try:
-            return JSONResponse(await ask_claude(client, settings, history))
+            return JSONResponse(await ask_claude(client, settings, history, location))
         except anthropic.RateLimitError:
             return JSONResponse({"error": "Asistan şu an çok yoğun, biraz sonra tekrar dene."}, status_code=503)
         except anthropic.APIStatusError as e:
@@ -237,6 +320,9 @@ def create_app(settings: Settings | None = None, client: anthropic.AsyncAnthropi
         except anthropic.APIConnectionError:
             log.warning("Claude API'ye bağlanılamadı")
             return JSONResponse({"error": "Asistana şu an ulaşılamıyor, biraz sonra tekrar dene."}, status_code=502)
+        except Exception:
+            log.exception("Sohbet isteğinde beklenmeyen hata")
+            return JSONResponse({"error": "Beklenmeyen bir sorun oluştu, tekrar dener misin?"}, status_code=500)
 
     # MCP uygulaması kendi lifespan'ını (oturum yöneticisi) taşıyor; sayfa ve API yollarını ona ekliyoruz.
     app: Starlette = mcp.streamable_http_app(stateless_http=True, host="0.0.0.0")

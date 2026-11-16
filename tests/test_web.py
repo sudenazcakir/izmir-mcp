@@ -1,3 +1,4 @@
+import json
 from types import SimpleNamespace as NS
 
 import pytest
@@ -5,7 +6,16 @@ from starlette.requests import Request
 from starlette.testclient import TestClient
 
 from izmir_mcp.config import Settings
-from izmir_mcp.web import MAX_HISTORY_CHARS, MCP_BETA, RateLimiter, clean_history, client_ip, create_app
+from izmir_mcp.web import (
+    MAX_HISTORY_CHARS,
+    MCP_BETA,
+    RateLimiter,
+    clean_history,
+    client_ip,
+    create_app,
+    extract_places,
+    parse_location,
+)
 
 
 class FakeMessages:
@@ -37,8 +47,24 @@ def text(t):
     return NS(type="text", text=t)
 
 
-def tool_use(name):
-    return NS(type="mcp_tool_use", name=name, server_name="izmir", input={})
+def tool_use(name, id="t1"):
+    return NS(type="mcp_tool_use", id=id, name=name, server_name="izmir", input={})
+
+
+def tool_result(payload, id="t1", is_error=False):
+    return NS(type="mcp_tool_result", tool_use_id=id, is_error=is_error, content=[NS(type="text", text=json.dumps(payload))])
+
+
+PHARMACIES = {
+    "district": "Buca",
+    "on_duty": True,
+    "pharmacies": [
+        {"name": "Erim Eczanesi", "address": "127 Sok. No:40/B", "phone": "0232 426 02 10",
+         "lat": 38.3881, "lon": 27.1752, "distance_km": 0.3},
+        {"name": "Konumsuz Eczane", "address": None, "phone": None, "lat": None, "lon": None, "distance_km": None},
+        {"name": "Uzak Eczane", "lat": 41.0, "lon": 29.0, "distance_km": 400},
+    ],
+}
 
 
 INIT = {
@@ -63,7 +89,7 @@ def test_chat_sends_mcp_connector_and_returns_answer():
     with TestClient(create_app(settings(), client)) as tc:
         r = tc.post("/api/chat", json={"messages": [{"role": "user", "content": "Buca'da nöbetçi eczane?"}]})
     assert r.status_code == 200
-    assert r.json() == {"answer": "Buca'da nöbetçi: **Ecza A**.", "tools": ["find_pharmacies"]}
+    assert r.json() == {"answer": "Buca'da nöbetçi: **Ecza A**.", "tools": ["find_pharmacies"], "places": []}
     call = msgs.calls[0]
     assert call["model"] == "claude-haiku-5-5"
     assert call["betas"] == [MCP_BETA]
@@ -204,3 +230,65 @@ def test_mcp_open_locally_without_key():
     local = settings(mcp_api_key=None, public_base_url=None, anthropic_api_key=None)
     with TestClient(create_app(local)) as tc:
         assert tc.post("/mcp", json=INIT, headers=MCP_HEADERS).status_code == 200
+
+
+def test_chat_returns_pharmacy_places_for_map():
+    client, _ = fake_client(reply(tool_use("find_pharmacies"), tool_result(PHARMACIES), text("Erim Eczanesi en yakın.")))
+    with TestClient(create_app(settings(), client)) as tc:
+        r = tc.post("/api/chat", json={"messages": [{"role": "user", "content": "Buca nöbetçi eczane"}]})
+    assert r.json()["places"] == [{
+        "name": "Erim Eczanesi", "address": "127 Sok. No:40/B", "phone": "0232 426 02 10",
+        "lat": 38.3881, "lon": 27.1752, "distance_km": 0.3,
+    }]
+
+
+def test_places_ignore_other_tools_and_errors():
+    client, _ = fake_client(reply(
+        tool_use("get_air_quality", id="a"), tool_result(PHARMACIES, id="a"),
+        tool_use("find_pharmacies", id="b"), tool_result(PHARMACIES, id="b", is_error=True),
+        text("ok"),
+    ))
+    with TestClient(create_app(settings(), client)) as tc:
+        r = tc.post("/api/chat", json={"messages": [{"role": "user", "content": "x"}]})
+    assert r.json()["places"] == []
+
+
+def test_location_goes_to_system_prompt():
+    client, msgs = fake_client(reply(text("ok")), reply(text("ok")))
+    with TestClient(create_app(settings(), client)) as tc:
+        tc.post("/api/chat", json={"messages": [{"role": "user", "content": "en yakın eczane"}],
+                                   "location": {"lat": 38.3881, "lon": 27.1752}})
+        tc.post("/api/chat", json={"messages": [{"role": "user", "content": "x"}], "location": {"lat": 51.5, "lon": 0}})
+    assert "38.38810" in msgs.calls[0]["system"] and "27.17520" in msgs.calls[0]["system"]
+    assert "konumunu paylaştı" not in msgs.calls[1]["system"]
+
+
+@pytest.mark.parametrize(
+    "raw, ok",
+    [
+        ({"lat": 38.42, "lon": 27.14}, True),
+        ({"lat": 41.0, "lon": 29.0}, False),
+        ({"lat": "38", "lon": 27}, False),
+        ({"lat": True, "lon": 27}, False),
+        ({"lat": float("nan"), "lon": 27}, False),
+        (None, False),
+    ],
+)
+def test_parse_location(raw, ok):
+    assert (parse_location(raw) is not None) is ok
+
+
+def test_extract_places_handles_garbage():
+    assert extract_places("not json") == []
+    assert extract_places('{"pharmacies": "x"}') == []
+    assert extract_places("[1, 2]") == []
+
+
+def test_unexpected_error_returns_json():
+    class Boom:
+        async def create(self, **kw):
+            raise RuntimeError("x")
+
+    with TestClient(create_app(settings(), NS(beta=NS(messages=Boom())))) as tc:
+        r = tc.post("/api/chat", json={"messages": [{"role": "user", "content": "x"}]})
+    assert r.status_code == 500 and "error" in r.json()
