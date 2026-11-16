@@ -1,0 +1,24 @@
+# Render Blueprint: sohbet sayfası + /api/chat + /mcp tek ücretsiz serviste.
+# Render > New > Blueprint > bu repo. sync: false olan değerler ilk kurulumda sorulur.
+services:
+  - type: web
+    name: izmir-mcp
+    runtime: python
+    region: frankfurt
+    plan: free
+    buildCommand: pip install uv && uv sync --frozen --no-dev
+    startCommand: uv run --no-dev izmir-mcp-web
+    healthCheckPath: /health
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.12.8"
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: DATABASE_URL
+        sync: false
+      - key: MCP_API_KEY
+        sync: false
+      - key: CHAT_MODEL
+        value: claude-haiku-5-5
+      - key: CHAT_EFFORT
+        value: low

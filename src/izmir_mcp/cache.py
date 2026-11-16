@@ -73,6 +73,7 @@ class LayeredCache:
         self._redis_loop: asyncio.AbstractEventLoop | None = None
         self._redis_url: str | None = None
         self._override: Any = None
+        self._stored_at: dict[str, float] = {}  # bellek katmanındaki değerin kaynaktan alındığı an (epoch)
 
     # -- Redis istemcisi
 
@@ -143,24 +144,32 @@ class LayeredCache:
         if left <= 0:
             return None
         self.memory.set(key, entry["v"], left)  # bu süreçte bir daha Redis'e gitme
+        self._stored_at[key] = float(entry.get("at") or 0)
         return entry["v"]
 
-    async def get_stale(self, key: str) -> Any | None:
+    async def get_stale(self, key: str, *, not_before: float | None = None) -> Any | None:
+        """Süresi dolmuş son iyi değer. not_before (epoch) verilirse ondan önce alınmış değer kullanılmaz:
+        ör. dünün nöbetçi eczane listesi bugün "eski veri" olarak bile gösterilmemeli."""
         value = self.memory.get_stale(key)
-        if value is not None:
+        if value is not None and (not_before is None or self._stored_at.get(key, 0) >= not_before):
             return value
         entry = await self._entry(key)
-        return entry["v"] if entry else None
+        if entry is None or (not_before is not None and float(entry.get("at") or 0) < not_before):
+            return None
+        return entry["v"]
 
     async def set(self, key: str, value: Any, ttl_seconds: float) -> None:
+        now = time.time()
         self.memory.set(key, value, ttl_seconds)
-        payload = json.dumps({"exp": time.time() + ttl_seconds, "v": value}, ensure_ascii=False)
+        self._stored_at[key] = now
+        payload = json.dumps({"at": now, "exp": now + ttl_seconds, "v": value}, ensure_ascii=False)
         ex = int(ttl_seconds + STALE_RETENTION_SECONDS)
         await self._call(lambda r: r.set(KEY_PREFIX + key, payload, ex=ex))
 
     def clear(self) -> None:
         """Yalnız bellek katmanını temizler; Redis'teki ortak veriye dokunmaz."""
         self.memory.clear()
+        self._stored_at.clear()
 
 
 cache = TTLCache()

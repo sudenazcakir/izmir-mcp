@@ -114,3 +114,20 @@ async def test_line_list_down_keeps_announcements(ann):
     r = await tools.get_announcements("34")
     assert r.error is None and len(r.announcements) == 1 and r.line_notes == []
     assert any("hat bilgileri şu an alınamıyor" in n for n in r.meta.notes)
+
+
+async def test_source_status_uses_light_head_requests_for_big_files(ann):
+    status = await tools.get_source_status()
+    by = {x.source: x for x in status.sources}
+    assert by[announcements.SOURCE_CSV].state == "up" and by[announcements.SOURCE_LINES].state == "up"
+    big = [(m, p) for m, p in ann.methods if p in (CSV, LINES)]
+    assert big and all(m == "HEAD" for m, _ in big)  # içerik indirilmedi
+
+
+async def test_head_probe_status_codes(ann):
+    ann.routes[LINES] = (405, {})  # HEAD desteklenmiyor ama sunucu ayakta
+    ann.routes[CSV] = (404, {})  # dosya kaldırılmış: gerçek bir sorun
+    status = await tools.get_source_status()
+    by = {x.source: x for x in status.sources}
+    assert by[announcements.SOURCE_LINES].state == "up"
+    assert by[announcements.SOURCE_CSV].state == "degraded"

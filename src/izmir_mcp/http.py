@@ -61,15 +61,17 @@ def _circuit_open_error(source: str) -> SourceError:
 
 
 async def get_json(url: str, *, source: str, params: dict[str, Any] | None = None,
-                   retries: int | None = None, as_text: bool = False) -> Any:
+                   retries: int | None = None, as_text: bool = False, head: bool = False) -> Any:
     """Kaynağa istek atar; devre kesici açıksa hiç denemeden CIRCUIT_OPEN hatası verir.
 
     as_text=True: JSON yerine metin döndürür (CSV dosyaları için; UTF-8, olmazsa Windows-1254).
+    head=True: içeriği indirmeyen hafif sağlık kontrolü (HEAD isteği), None döner. Sunucu 4xx'ten küçük bir
+    kod ya da 405 (HEAD desteklenmiyor ama sunucu ayakta) dönerse başarılı sayılır; 404 ve 5xx hata sayılır.
     """
     if not breakers.allow(source):
         raise SourceFailure(_circuit_open_error(source))
     try:
-        data = await _get_json(url, source=source, params=params, retries=retries, as_text=as_text)
+        data = await _get_json(url, source=source, params=params, retries=retries, as_text=as_text, head=head)
     except SourceFailure as f:
         if f.error.code == ErrorCode.NOT_FOUND:
             breakers.record_success(source)  # kaynak ayakta, sadece kayıt yok
@@ -97,7 +99,7 @@ def _decode_text(content: bytes) -> str:
 
 
 async def _get_json(url: str, *, source: str, params: dict[str, Any] | None, retries: int | None,
-                    as_text: bool = False) -> Any:
+                    as_text: bool = False, head: bool = False) -> Any:
     if demo_down(source):
         log.warning("DEMO_DOWN_SOURCES: %s çökmüş gibi davranılıyor (istek atılmadı)", source)
         raise SourceFailure(SourceError(
@@ -108,8 +110,12 @@ async def _get_json(url: str, *, source: str, params: dict[str, Any] | None, ret
     last_exc: Exception | None = None
     for attempt in range(retries + 1):
         try:
-            r = await client().get(url, params=params)
+            r = await (client().head(url, params=params) if head else client().get(url, params=params))
             if r.status_code >= 500:
+                raise httpx.HTTPStatusError(f"{r.status_code}", request=r.request, response=r)
+            if head:
+                if r.status_code < 400 or r.status_code == 405:
+                    return None
                 raise httpx.HTTPStatusError(f"{r.status_code}", request=r.request, response=r)
             if r.status_code == 404:
                 raise SourceFailure(SourceError(code=ErrorCode.NOT_FOUND, source=source,
@@ -137,8 +143,12 @@ async def _get_json(url: str, *, source: str, params: dict[str, Any] | None, ret
 
 
 async def get_json_cached(url: str, *, source: str, ttl: float, params: dict[str, Any] | None = None,
-                          as_text: bool = False) -> tuple[Any, bool, bool]:
-    """(veri, önbellekten_mi, bayat_mi). Kaynak çökerse son iyi veriye düşer (bellek, sonra Redis)."""
+                          as_text: bool = False, stale_not_before: float | None = None
+                          ) -> tuple[Any, bool, bool]:
+    """(veri, önbellekten_mi, bayat_mi). Kaynak çökerse son iyi veriye düşer (bellek, sonra Redis).
+
+    stale_not_before (epoch): son iyi veri bu andan önce alınmışsa kullanılmaz, hata döner.
+    """
     key = f"{url}?{sorted((params or {}).items())}"
     hit = await store.get(key)
     if hit is not None:
@@ -146,7 +156,7 @@ async def get_json_cached(url: str, *, source: str, ttl: float, params: dict[str
     try:
         data = await get_json(url, source=source, params=params, as_text=as_text)
     except SourceFailure:
-        stale = await store.get_stale(key)
+        stale = await store.get_stale(key, not_before=stale_not_before)
         if stale is not None:
             return stale, True, True
         raise
