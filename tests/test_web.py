@@ -14,6 +14,7 @@ from izmir_mcp.web import (
     client_ip,
     create_app,
     extract_places,
+    extract_trip,
     parse_location,
 )
 
@@ -89,7 +90,8 @@ def test_chat_sends_mcp_connector_and_returns_answer():
     with TestClient(create_app(settings(), client)) as tc:
         r = tc.post("/api/chat", json={"messages": [{"role": "user", "content": "Buca'da nöbetçi eczane?"}]})
     assert r.status_code == 200
-    assert r.json() == {"answer": "Buca'da nöbetçi: **Ecza A**.", "tools": ["find_pharmacies"], "places": []}
+    assert r.json() == {"answer": "Buca'da nöbetçi: **Ecza A**.", "tools": ["find_pharmacies"], "places": [],
+                        "trip": None}
     call = msgs.calls[0]
     assert call["model"] == "claude-haiku-5-5"
     assert call["betas"] == [MCP_BETA]
@@ -292,3 +294,31 @@ def test_unexpected_error_returns_json():
     with TestClient(create_app(settings(), NS(beta=NS(messages=Boom())))) as tc:
         r = tc.post("/api/chat", json={"messages": [{"role": "user", "content": "x"}]})
     assert r.status_code == 500 and "error" in r.json()
+
+
+TRIP = {
+    "origin": {"query": "Bornova", "name": "Bornova", "kind": "metro", "lat": 38.4577, "lon": 27.2125},
+    "destination": {"query": "Konak", "name": "Konak", "kind": "metro", "lat": 38.4189, "lon": 27.1287},
+    "straight_km": 8.7,
+    "nearby_stations": [{"system": "metro", "name": "Bornova", "distance_km": 0.0, "end": "origin"}],
+    "maps_url": "https://www.google.com/maps/dir/?api=1&origin=38.4577,27.2125&destination=38.4189,27.1287&travelmode=transit",
+    "meta": {"sources": [], "fetched_at": "2026-11-16T16:00:00Z"},
+    "error": None,
+}
+
+
+def test_chat_returns_trip_card():
+    client, _ = fake_client(reply(tool_use("get_transit_directions"), tool_result(TRIP), text("Metroyla aktarmasız.")))
+    with TestClient(create_app(settings(), client)) as tc:
+        r = tc.post("/api/chat", json={"messages": [{"role": "user", "content": "Bornova'dan Konak'a"}]})
+    trip = r.json()["trip"]
+    assert trip["origin"]["name"] == "Bornova" and trip["destination"]["name"] == "Konak"
+    assert trip["maps_url"].endswith("travelmode=transit")
+    assert trip["nearby"] == [{"system": "metro", "name": "Bornova", "end": "origin"}]
+
+
+def test_extract_trip_rejects_bad_results():
+    assert extract_trip("nope") is None
+    assert extract_trip(json.dumps({**TRIP, "error": {"code": "not_found"}})) is None
+    assert extract_trip(json.dumps({**TRIP, "maps_url": "javascript:alert(1)"})) is None
+    assert extract_trip(json.dumps({**TRIP, "origin": None})) is None

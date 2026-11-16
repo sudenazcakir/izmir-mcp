@@ -20,6 +20,7 @@ from .models import (
     HourlyAqi,
     LineNote,
     Meta,
+    NearbyStation,
     Pharmacy,
     PharmacyResult,
     SourceError,
@@ -27,6 +28,8 @@ from .models import (
     SourceStatusResult,
     StopArrivals,
     StopRef,
+    TransitDirections,
+    TripPoint,
 )
 from .sources import air, announcements, eshot, pharmacy, transit_static
 from .text import norm, parse_float, strip_stop_words
@@ -538,4 +541,89 @@ async def get_source_status(probe: bool = True) -> SourceStatusResult:
         sources=statuses,
         all_up=all(s.state == "up" for s in statuses),
         meta=Meta(sources=names, fetched_at=_now(), notes=notes),
+    )
+
+
+# ---------------------------------------------------------------- get_transit_directions
+
+NEAR_STATION_KM = 1.5
+USER_WORDS = {"konumum", "konumumdan", "buradan", "bulundugum yer", "bulundugum yerden", "benim konumum", "konum"}
+
+
+async def _resolve_place(q: str) -> TripPoint | None:
+    """Yer adını koordinata çevirir: önce istasyon/iskele/ilçe, sonra ESHOT durak adı."""
+    n = norm(q)
+    if not n:
+        return None
+    # "Karşıyaka İskele" vapuru, "Bornova Metro" metroyu kastediyor: önce o türde ara.
+    hints = (("iskele", "piers", "pier"), ("vapur", "piers", "pier"), ("metro", "metro", "metro"),
+             ("izban", "izban", "izban"))
+    for word, k, kind in hints:
+        if word in n.split():
+            base = " ".join(w for w in n.split() if w not in {word, "istasyonu", "istasyon"})
+            for x in await transit_static.stations_or_snapshot(k):
+                if base and norm(x.name) == base:
+                    return TripPoint(query=q, name=x.name, kind=kind, lat=x.lat, lon=x.lon)
+    hit = await _landmark_coords(n)
+    if hit is None and (s := strip_stop_words(n)) != n:
+        hit = await _landmark_coords(s)
+    if hit is not None:
+        lat, lon, name = hit
+        kind = "district"
+        for k, label in (("metro", "metro"), ("izban", "izban"), ("piers", "pier")):
+            if any(x.name == name for x in await transit_static.stations_or_snapshot(k)):
+                kind = label
+                break
+        return TripPoint(query=q, name=name, kind=kind, lat=lat, lon=lon)
+    rows = await db.search_stops(strip_stop_words(q), limit=1)
+    if rows and rows[0].get("lat") is not None:
+        r = rows[0]
+        return TripPoint(query=q, name=r["name"], kind="stop", lat=r["lat"], lon=r["lon"])
+    return None
+
+
+def transit_maps_url(o: TripPoint, d: TripPoint) -> str:
+    return (
+        "https://www.google.com/maps/dir/?api=1"
+        f"&origin={o.lat:.6f},{o.lon:.6f}&destination={d.lat:.6f},{d.lon:.6f}&travelmode=transit"
+    )
+
+
+async def get_transit_directions(origin: str, destination: str, origin_lat: float | None = None,
+                                 origin_lon: float | None = None) -> TransitDirections:
+    meta = Meta(sources=["İzmir Metro", "İZBAN", "İZDENİZ", "ESHOT"], fetched_at=_now())
+    points: list[TripPoint | None] = []
+    for label, q in (("Başlangıç", origin), ("Varış", destination)):
+        if label == "Başlangıç" and origin_lat is not None and origin_lon is not None and (
+            not q.strip() or norm(q) in USER_WORDS
+        ):
+            points.append(TripPoint(query=q or "konumum", name="Konumun", kind="user", lat=origin_lat, lon=origin_lon))
+            continue
+        p = await _resolve_place(q)
+        if p is None:
+            return TransitDirections(meta=meta, error=SourceError(
+                code=ErrorCode.NOT_FOUND,
+                message=f"{label} noktası '{q}' bulunamadı.",
+                hint="İlçe, semt, metro/İZBAN istasyonu, iskele ya da durak adı yaz (ör. 'Bornova Metro', 'Konak İskele').",
+            ))
+        points.append(p)
+    o, d = points
+    assert o is not None and d is not None
+
+    near: list[NearbyStation] = []
+    for kind, system in (("metro", "metro"), ("izban", "izban"), ("piers", "ferry")):
+        items = await transit_static.stations_or_snapshot(kind)
+        for end, pt in (("origin", o), ("destination", d)):
+            best = min(((haversine_km(pt.lat, pt.lon, x.lat, x.lon), x.name) for x in items
+                        if getattr(x, "active", True)), default=None)
+            if best and best[0] <= NEAR_STATION_KM:
+                near.append(NearbyStation(system=system, name=best[1], distance_km=round(best[0], 2), end=end))
+
+    meta.notes.append(
+        "Bu araç güzergahı kendisi hesaplamaz: uçları ve yakın raylı/vapur duraklarını verir. Seçeneklerin süre "
+        "karşılaştırması ve aktarmalar maps_url'deki Google Haritalar toplu taşıma tarifinde."
+    )
+    return TransitDirections(
+        origin=o, destination=d, straight_km=round(haversine_km(o.lat, o.lon, d.lat, d.lon), 1),
+        nearby_stations=near, maps_url=transit_maps_url(o, d), meta=meta,
     )

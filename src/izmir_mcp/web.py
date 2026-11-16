@@ -45,6 +45,7 @@ MAX_PAUSE_CONTINUES = 3
 RATE_WINDOW_SECONDS = 600
 MAX_PLACES = 10  # sayfaya haritada gösterilmek üzere giden en fazla eczane
 PLACE_TOOLS = {"find_pharmacies"}
+TRIP_TOOL = "get_transit_directions"
 # İzmir ili ve çevresi; bunun dışındaki konumlar yok sayılır (yanlış/sahte koordinata karşı).
 IZMIR_BBOX = (37.6, 39.6, 25.8, 28.7)  # min_lat, max_lat, min_lon, max_lon
 
@@ -65,6 +66,12 @@ gerçek ölçümdür ama günlüktür ve birkaç gün gecikmeli gelebilir.
 - İzmir dışı ya da araçlarının kapsamadığı konularda bunu dürüstçe söyle.
 - Eczane listesi verdiğinde sayfa onları haritada ve yol tarifi düğmeleriyle ayrıca gösteriyor; cevapta koordinat \
 ya da harita linki yazma, eczaneleri yakından uzağa sırala.
+- "X'ten Y'ye nasıl giderim" gibi toplu taşıma sorularında get_transit_directions kullan. İzmir'de metro ve \
+İZBAN tek hattır: iki uç da aynı sisteme yakınsa (nearby_stations) aktarmasız raylı seçeneği öne çıkar. Önce en \
+hızlı olması muhtemel seçeneği, sonra alternatifleri kısaca yaz; kesin süre bilmiyorsan uydurma. Sayfa, seçeneklerin \
+sürelerini karşılaştırıp en hızlıyı üstte gösteren toplu taşıma tarifi düğmesini ayrıca gösteriyor; bağlantıyı yazma, \
+"aşağıdaki düğmeden süreleri karşılaştırabilirsin" de. Başlangıç bir durağa yakınsa get_stop_arrivals ile oraya \
+yaklaşan otobüslere de bakabilirsin.
 - Kullanıcı "yakınımdaki", "bana en yakın" gibi konuma bağlı soruyor ama konum paylaşılmadıysa, sayfanın altındaki \
 "Konumumu kullan" düğmesine basmasını ya da ilçe/semt adını yazmasını iste."""
 
@@ -202,6 +209,33 @@ def _result_text(content: Any) -> str:
     return ""
 
 
+def extract_trip(text: str) -> dict[str, Any] | None:
+    """get_transit_directions sonucundan sayfanın göstereceği yol tarifi kartı."""
+    try:
+        data = json.loads(text)
+    except ValueError:
+        return None
+    if not isinstance(data, dict) or data.get("error"):
+        return None
+    url = data.get("maps_url")
+    if not isinstance(url, str) or not url.startswith("https://www.google.com/maps/dir/"):
+        return None
+    ends: dict[str, Any] = {}
+    for key in ("origin", "destination"):
+        p = data.get(key)
+        loc = parse_location({"lat": p.get("lat"), "lon": p.get("lon")}) if isinstance(p, dict) else None
+        if loc is None or not isinstance(p.get("name"), str):
+            return None
+        ends[key] = {"name": p["name"][:80], "kind": str(p.get("kind", ""))[:20], "lat": loc[0], "lon": loc[1]}
+    near = []
+    for n in data.get("nearby_stations") or []:
+        if isinstance(n, dict) and isinstance(n.get("name"), str) and n.get("system") in ("metro", "izban", "ferry"):
+            near.append({"system": n["system"], "name": n["name"][:60], "end": n.get("end")})
+    km = data.get("straight_km")
+    return {**ends, "maps_url": url, "nearby": near[:6],
+            "straight_km": km if isinstance(km, int | float) and not isinstance(km, bool) else None}
+
+
 def extract_places(text: str) -> list[dict[str, Any]]:
     """find_pharmacies sonucundaki (JSON) konumu bilinen eczaneleri harita için sadeleştirir."""
     try:
@@ -243,6 +277,7 @@ async def ask_claude(
     tools_used: list[str] = []
     tool_names: dict[str, str] = {}
     places: list[dict[str, Any]] = []
+    trip: dict[str, Any] | None = None
     system = SYSTEM_PROMPT
     if location:
         system += "\n\n" + LOCATION_NOTE.format(lat=location[0], lon=location[1])
@@ -264,19 +299,22 @@ async def ask_claude(
                 tools_used.append(block.name)
                 tool_names[block.id] = block.name
             elif block.type == "mcp_tool_result" and not block.is_error:
-                if tool_names.get(block.tool_use_id) in PLACE_TOOLS:
+                name = tool_names.get(block.tool_use_id)
+                if name in PLACE_TOOLS:
                     found = extract_places(_result_text(block.content))
                     if found:
                         places = found  # birden çok arama olduysa sonuncusu (cevabın anlattığı) gösterilir
+                elif name == TRIP_TOOL:
+                    trip = extract_trip(_result_text(block.content)) or trip
         if resp.stop_reason == "refusal":
             return {"answer": "Bu soruya cevap veremiyorum. Başka bir şekilde sormayı dener misin?", "tools": tools_used,
-                    "places": []}
+                    "places": [], "trip": None}
         if resp.stop_reason != "pause_turn":
             break
         # Uzun araç zinciri yarıda durdu: cevabı olduğu gibi geri verip devam ettir.
         messages = [*messages, {"role": "assistant", "content": resp.content}]
     answer = "\n\n".join(texts).strip() or "Şu an bir cevap üretemedim, lütfen tekrar dener misin?"
-    return {"answer": answer, "tools": tools_used, "places": places}
+    return {"answer": answer, "tools": tools_used, "places": places, "trip": trip}
 
 
 def create_app(settings: Settings | None = None, client: anthropic.AsyncAnthropic | None = None) -> ASGIApp:

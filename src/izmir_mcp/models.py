@@ -210,3 +210,32 @@ class Pier(BaseModel):
     lon: float
     car_ferry: bool = False
     active: bool = True
+
+
+class TripPoint(BaseModel):
+    query: str = Field(description="Kullanıcının yazdığı yer")
+    name: str = Field(description="Eşleşen yer (ilçe, istasyon, iskele, durak ya da 'Konumun')")
+    kind: str = Field(description="district | metro | izban | pier | stop | user")
+    lat: float
+    lon: float
+
+
+class NearbyStation(BaseModel):
+    system: str = Field(description="metro | izban | ferry")
+    name: str
+    distance_km: float
+    end: str = Field(description="origin | destination: hangi uca yakın")
+
+
+class TransitDirections(BaseModel):
+    origin: TripPoint | None = None
+    destination: TripPoint | None = None
+    straight_km: float | None = Field(default=None, description="İki nokta arası kuş uçuşu mesafe")
+    nearby_stations: list[NearbyStation] = Field(
+        default_factory=list, description="Uçlara 1,5 km'den yakın metro/İZBAN istasyonları ve iskeleler"
+    )
+    maps_url: str | None = Field(
+        default=None, description="Google Haritalar toplu taşıma tarifi (sayfa bunu düğme olarak gösterir)"
+    )
+    meta: Meta
+    error: SourceError | None = None

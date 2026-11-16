@@ -93,13 +93,23 @@
     box-shadow: 0 1px 4px rgba(0,0,0,.4); font: 700 12px/22px system-ui, sans-serif; text-align: center; }
   .me { width: 16px; height: 16px; border-radius: 50%; background: #2f7bf6; border: 3px solid #fff; box-shadow: 0 0 0 4px rgba(47,123,246,.3); }
   .leaflet-popup-content a { font-weight: 600; }
+  .trip { white-space: normal; margin-top: 12px; display: grid; gap: 10px; border: 1px solid var(--line);
+    border-radius: 12px; padding: 12px; background: var(--bg); }
+  .trip .ends { display: grid; gap: 4px; font-size: 14.5px; }
+  .trip .ends b { display: inline-block; width: 18px; color: var(--accent); }
+  .trip .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .trip .chips span { font-size: 12.5px; background: var(--accent-soft); border-radius: 999px; padding: 2px 9px; }
+  .trip .go { display: block; text-align: center; text-decoration: none; font-weight: 600; border-radius: 12px;
+    padding: 10px 14px; background: var(--accent); color: var(--accent-ink); }
+  .trip .map { height: 200px; }
+  .pin.b { background: #c2410c; }
 </style>
 </head>
 <body>
 <header>
   <div class="wrap">
     <h1>İzmir Asistanı</h1>
-    <p>İzmir Büyükşehir açık verisiyle otobüs, nöbetçi eczane ve hava kalitesi bilgisi</p>
+    <p>İzmir Büyükşehir açık verisiyle otobüs, yol tarifi, nöbetçi eczane ve hava kalitesi bilgisi</p>
   </div>
 </header>
 <main id="scroll">
@@ -112,6 +122,7 @@
         <button type="button">Bana en yakın nöbetçi eczane hangisi?</button>
         <button type="button">Bornova'da hava kalitesi nasıl, akşam dışarı çıkılır mı?</button>
         <button type="button">Konak İskele'ye hangi otobüsler yaklaşıyor?</button>
+        <button type="button">Bornova'dan Konak'a toplu taşımayla nasıl giderim?</button>
       </div>
     </div>
   </div>
@@ -174,6 +185,36 @@
     return leafletReady;
   }
 
+  const SYS = { metro: "🚇 Metro", izban: "🚆 İZBAN", ferry: "⛴️ Vapur" };
+  function renderTrip(el, t) {
+    const box = document.createElement("div");
+    box.className = "trip";
+    const chips = (t.nearby || []).map(n => "<span>" + esc((SYS[n.system] || n.system) + ": " + n.name +
+      (n.end === "origin" ? " (başlangıca yakın)" : " (varışa yakın)")) + "</span>").join("");
+    box.innerHTML =
+      '<div class="ends"><div><b>A</b>' + esc(t.origin.name) + '</div><div><b>B</b>' + esc(t.destination.name) +
+      (t.straight_km != null ? ' <span class="map-note">· kuş uçuşu ' + esc(fmtKm(t.straight_km)) + "</span>" : "") +
+      "</div></div>" + (chips ? '<div class="chips">' + chips + "</div>" : "") +
+      '<div class="map" role="img" aria-label="Başlangıç ve varış haritası"></div>' +
+      '<a class="go" href="' + esc(t.maps_url) + '" target="_blank" rel="noopener">🚍 Toplu taşıma seçeneklerini karşılaştır</a>' +
+      '<div class="map-note">Google Haritalar seçenekleri sürelerine göre sıralar, en hızlısı en üstte.</div>';
+    el.appendChild(box);
+    const mapEl = box.querySelector(".map");
+    loadLeaflet().then(() => {
+      const map = L.map(mapEl, { scrollWheelZoom: false });
+      L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+        maxZoom: 19, attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+      }).addTo(map);
+      const pin = (p, label, cls) => L.marker([p.lat, p.lon], { icon: L.divIcon({ className: "",
+        html: '<div class="pin ' + cls + '">' + label + "</div>", iconSize: [26, 26], iconAnchor: [13, 13] }), title: p.name })
+        .addTo(map).bindPopup("<b>" + esc(p.name) + "</b>");
+      pin(t.origin, "A", ""); pin(t.destination, "B", "b");
+      map.fitBounds([[t.origin.lat, t.origin.lon], [t.destination.lat, t.destination.lon]],
+        { paddingTopLeft: [56, 36], paddingBottomRight: [32, 36], maxZoom: 15 });
+      scroll.scrollTop = scroll.scrollHeight;
+    }).catch(() => { mapEl.remove(); });
+  }
+
   function renderPlaces(el, raw, origin) {
     const places = raw.map(p => ({ ...p, d: origin ? km(origin, p) : p.distance_km }))
       .sort((a, b) => (a.d ?? 1e9) - (b.d ?? 1e9));
@@ -219,6 +260,7 @@
   const TOOL_NAMES = {
     get_stop_arrivals: "Otobüs varışları", find_pharmacies: "Eczaneler",
     get_air_quality: "Hava kalitesi", get_source_status: "Kaynak durumu", get_announcements: "Duyurular",
+    get_transit_directions: "Yol tarifi",
   };
   const log = document.getElementById("log"), scroll = document.getElementById("scroll");
   const form = document.getElementById("form"), q = document.getElementById("q"), send = document.getElementById("send");
@@ -256,6 +298,7 @@
       const tools = [...new Set(data.tools || [])].map(t => "<span>" + esc(TOOL_NAMES[t] || t) + "</span>").join("");
       wait.innerHTML = fmt(data.answer) + (tools ? '<div class="tools">' + tools + "</div>" : "");
       if (Array.isArray(data.places) && data.places.length) renderPlaces(wait, data.places, userLoc);
+      if (data.trip && data.trip.origin && data.trip.destination) renderTrip(wait, data.trip);
     } catch (e) {
       history.pop();
       wait.classList.add("error");
