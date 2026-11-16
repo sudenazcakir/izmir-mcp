@@ -22,15 +22,19 @@ class FakeIzmir:
     def __init__(self):
         self.routes: dict[str, object] = {}
         self.calls: list[str] = []
+        self.methods: list[tuple[str, str]] = []  # (HTTP yöntemi, yol)
 
     def __call__(self, request: httpx.Request) -> httpx.Response:
         path = request.url.path
         self.calls.append(path)
+        self.methods.append((request.method, path))
         for prefix, result in self.routes.items():
             if path == prefix or path.startswith(prefix + "/") or (prefix.endswith("*") and path.startswith(prefix[:-1])):
                 if isinstance(result, Exception):
                     raise result
                 status, body = result
+                if isinstance(body, str):  # CSV gibi düz metin dosyaları
+                    return httpx.Response(status, content=body.encode("utf-8"), headers={"content-type": "text/csv"})
                 return httpx.Response(status, json=body)
         return httpx.Response(404, json={"Message": "not found"})
 

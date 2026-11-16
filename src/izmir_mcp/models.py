@@ -141,6 +141,31 @@ class SourceStatusResult(BaseModel):
     error: SourceError | None = None
 
 
+class Announcement(BaseModel):
+    title: str
+    lines: list[str] = Field(description="Duyurunun etkilediği hat numaraları")
+    starts_at: datetime
+    ends_at: datetime | None = None
+    status: str = Field(description="'active' (şu an geçerli) veya 'upcoming' (ileri tarihli)")
+    source: str
+
+
+class LineNote(BaseModel):
+    line: str
+    note: str = Field(description="Tarihsiz, kalıcı hat notu (ör. ring hat, olumsuz havada uğranmayan duraklar)")
+    source: str
+
+
+class AnnouncementsResult(BaseModel):
+    line: str | None = None
+    line_name: str | None = None
+    announcements: list[Announcement] = Field(default_factory=list)
+    line_notes: list[LineNote] = Field(default_factory=list)
+    total: int = Field(default=0, description="Filtreye uyan duyuru sayısı (limit uygulanmadan önce)")
+    meta: Meta
+    error: SourceError | None = None
+
+
 # --- statik veri (gece yükleme işi ve veritabanı) ---
 
 

@@ -15,6 +15,7 @@ Claude API araçlarımızı çağırarak cevaplar. Yaşar Üniversitesi, Güz 20
 | `get_stop_arrivals(stop, limit=8)` | Durağa yaklaşan otobüsler ve **tahmini** varış dakikası. `stop` durak numarası (`40010`) ya da ad (`Bornova Metro`) olabilir. | ESHOT canlı, İBB CBS yakın duraklar |
 | `find_pharmacies(district, on_duty=True, limit=5, lat?, lon?)` | İlçedeki nöbetçi (ya da tüm) eczaneler, ilçe merkezine uzaklığa göre sıralı. | İzmir Eczacı Odası / İBB |
 | `get_air_quality(district, lat?, lon?, hours=12)` | Şu anki Avrupa Hava Kalitesi İndeksi ve düzeyi, kirletici değerleri, önümüzdeki saatlerin tahmini ve en yakın belediye istasyonunun son günlük ölçümü. | Open-Meteo Air Quality (model, saatlik), İBB hava kalitesi istasyonları (ölçüm, günlük) |
+| `get_announcements(line?, include_upcoming=True, limit=20)` | ESHOT hat duyuruları (geçici güzergah değişikliği gibi tarihli duyurular, aktif ve ileri tarihli) ve hattın kalıcı notları. Hat verilmezse tüm güncel duyurular, aynı duyuru tek kayıtta birleşik. | ESHOT hat duyuruları CSV'si (openfiles), ESHOT HatlariGetir |
 | `get_source_status(probe=True)` | Her veri kaynağının durumu: `up`, `degraded`, `down`, `recovering`, `unknown`. Art arda hata veren kaynak devre kesiciyle bir süre denenmez. | Tüm kaynaklar |
 
 Her araç aynı zarfı döndürür: veri + `meta` (kaynak, zaman, önbellek, notlar) + kaynak çökerse `error`
@@ -161,7 +162,7 @@ src/izmir_mcp/
   tools.py             araçların iş mantığı
   models.py            ortak Pydantic modelleri (Arrival, Pharmacy, AirReading, Meta, SourceError…)
   http.py, cache.py    zaman aşımı + tekrar deneme; iki katmanlı önbellek (bellek + REDIS_URL varsa Upstash Redis), son iyi değer
-  sources/             kaynak başına adaptör (eshot, pharmacy, transit_static, air)
+  sources/             kaynak başına adaptör (eshot, pharmacy, transit_static, air, announcements)
   breaker.py           kaynak başına devre kesici (get_source_status bunu raporlar)
   districts.py         30 ilçe ve merkez koordinatı
   ingest.py            gece yükleme işinin mantığı
@@ -185,6 +186,8 @@ tests/                 çevrimdışı testler (+ `-m live` ile canlı testler)
   geriden geliyor; istasyon koordinatı da vermiyor (konumlar `sources/air.py` içinde, yaklaşık). Anlık ve
   saatlik değerler Open-Meteo'nun CAMS modelinden gelir: ölçüm değil, tahmindir. İlçe merkezine 30 km'den
   uzak istasyon gösterilmez.
+- Hat duyurularında yalnızca başlık ve tarih var, ayrıntılı metin yok. `HatlariGetir`'in `Duyuru` alanı
+  tarihsiz, kalıcı notlar içeriyor; bunlar "hat notları" olarak ayrı gösterilir.
 
 ## Lisans
 
