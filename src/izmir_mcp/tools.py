@@ -4,21 +4,27 @@ import asyncio
 from datetime import UTC, datetime
 
 from . import db
+from .breaker import BreakerState, breakers
 from .config import get_settings
 from .districts import DISTRICTS, find_district
 from .geo import haversine_km
-from .http import SourceFailure
+from .http import SourceFailure, get_json
 from .models import (
+    AirQualityResult,
+    AirReading,
     Arrival,
     ErrorCode,
+    HourlyAqi,
     Meta,
     Pharmacy,
     PharmacyResult,
     SourceError,
+    SourceStatus,
+    SourceStatusResult,
     StopArrivals,
     StopRef,
 )
-from .sources import eshot, pharmacy, transit_static
+from .sources import air, eshot, pharmacy, transit_static
 from .text import norm, parse_float, strip_stop_words
 
 MAX_STOPS_PER_QUERY = 10  # Bornova Metro gibi aktarma merkezlerinde aynı adlı 10 peron var
@@ -222,3 +228,207 @@ async def find_pharmacies(district: str | None = None, on_duty: bool = True, lim
         meta.notes.append("Kaynak şu an cevap vermiyor; en son başarıyla alınan liste gösteriliyor.")
     meta.fetched_at = _now()
     return PharmacyResult(district=d.name if d else None, on_duty=on_duty, pharmacies=result, meta=meta)
+
+
+# ---------------------------------------------------------------- get_air_quality
+
+STATION_NOTE_KM = 10  # bundan uzaktaki istasyon için "uzak" notu düş
+STATION_MAX_KM = 30  # bundan uzaktaki istasyonu hiç gösterme (ilçeyi temsil etmez)
+
+
+def _open_meteo_readings(data: dict, label: str) -> tuple[list[AirReading], int | None, list[HourlyAqi]]:
+    offset = data.get("utc_offset_seconds")
+    cur = data.get("current") or {}
+    units = data.get("current_units") or {}
+    if not cur.get("time"):
+        return [], None, []
+    now = air.parse_local_time(cur["time"], offset)
+    readings = [
+        AirReading(
+            station=f"Open-Meteo modeli ({label})", pollutant=name, value=float(cur[var]),
+            unit=units.get(var) or "µg/m³", measured_at=now, resolution="hourly", source=air.SOURCE_OPEN_METEO,
+            lat=data.get("latitude"), lon=data.get("longitude"),
+        )
+        for var, name in air.POLLUTANTS.items()
+        if cur.get(var) is not None
+    ]
+    aqi = cur.get("european_aqi")
+    aqi = round(aqi) if aqi is not None else None
+
+    hourly = data.get("hourly") or {}
+    outlook: list[HourlyAqi] = []
+    for i, t in enumerate(hourly.get("time") or []):
+        when = air.parse_local_time(t, offset)
+        if when <= now:
+            continue
+
+        def at(var: str, i: int = i):
+            values = hourly.get(var) or []
+            return values[i] if i < len(values) else None
+
+        h_aqi = at("european_aqi")
+        outlook.append(HourlyAqi(
+            time=when, european_aqi=round(h_aqi) if h_aqi is not None else None, level=air.aqi_level(h_aqi),
+            pm2_5=at("pm2_5"), pm10=at("pm10"),
+        ))
+    return readings, aqi, outlook
+
+
+def _nearest_station(rows: list[dict], lat: float, lon: float) -> tuple[list[AirReading], float | None]:
+    located = [r for r in rows if r["lat"] is not None and r["lon"] is not None]
+    if not located:
+        return [], None
+    best = min(located, key=lambda r: haversine_km(lat, lon, r["lat"], r["lon"]))
+    dist = round(haversine_km(lat, lon, best["lat"], best["lon"]), 1)
+    latest = max(r["measured_at"] for r in located if r["key"] == best["key"])
+    readings = [
+        AirReading(
+            station=r["station"], pollutant=r["pollutant"], value=r["value"], measured_at=r["measured_at"],
+            resolution="daily", source=air.SOURCE_IBB, lat=r["lat"], lon=r["lon"], distance_km=dist,
+        )
+        for r in located
+        if r["key"] == best["key"] and r["measured_at"] == latest
+    ]
+    return readings, dist
+
+
+async def get_air_quality(district: str | None = None, lat: float | None = None, lon: float | None = None,
+                          hours: int = 12) -> AirQualityResult:
+    started = _now()
+    meta = Meta(sources=[air.SOURCE_OPEN_METEO, air.SOURCE_IBB], fetched_at=started)
+
+    d = find_district(district) if district else None
+    if district and d is None:
+        return AirQualityResult(district=district, meta=meta, error=SourceError(
+            code=ErrorCode.INVALID_INPUT,
+            message=f"'{district}' İzmir ilçeleri arasında bulunamadı.",
+            hint="Geçerli ilçeler: " + ", ".join(x.name for x in DISTRICTS),
+        ))
+    if d is None and (lat is None or lon is None):
+        return AirQualityResult(meta=meta, error=SourceError(
+            code=ErrorCode.INVALID_INPUT, message="İlçe adı ya da konum (lat, lon) gerekli."))
+
+    ref_lat, ref_lon = (lat, lon) if lat is not None and lon is not None else (d.lat, d.lon)
+    label = f"{d.name} merkezi" if d and lat is None else "verilen konum"
+
+    om, ibb = await asyncio.gather(air.open_meteo(ref_lat, ref_lon), air.station_daily(), return_exceptions=True)
+    for r in (om, ibb):
+        if isinstance(r, BaseException) and not isinstance(r, SourceFailure):
+            raise r
+
+    result = AirQualityResult(district=d.name if d else None, meta=meta)
+    notes = meta.notes
+    stale = False
+    failures: list[SourceFailure] = []
+
+    if isinstance(om, SourceFailure):
+        failures.append(om)
+        notes.append("Open-Meteo şu an cevap vermiyor; anlık ve saatlik değerler gösterilemiyor.")
+    else:
+        data, _cached, om_stale = om
+        stale |= om_stale
+        result.current, result.european_aqi, outlook = _open_meteo_readings(data, label)
+        result.level = air.aqi_level(result.european_aqi)
+        result.outlook = outlook[: max(0, hours)]
+        notes.append("Anlık ve saatlik değerler ölçüm değil, Open-Meteo (CAMS) hava kalitesi modelinin tahminidir.")
+
+    if isinstance(ibb, SourceFailure):
+        failures.append(ibb)
+        notes.append("Belediye hava kalitesi istasyonları şu an cevap vermiyor; istasyon ölçümü gösterilemiyor.")
+    else:
+        rows, _cached, ibb_stale = ibb
+        stale |= ibb_stale
+        readings, dist = _nearest_station(rows, ref_lat, ref_lon)
+        if dist is not None and dist > STATION_MAX_KM:
+            notes.append(f"En yakın belediye istasyonu {dist} km uzakta; bu bölgeyi temsil etmediği için gösterilmedi.")
+        elif readings:
+            result.station_daily = readings
+            measured = readings[0].measured_at
+            age = (_now().astimezone(air.ISTANBUL).date() - measured.date()).days
+            when = f"{measured:%d.%m.%Y} tarihli günlük ortalama"
+            notes.append(f"Belediye istasyonu ({readings[0].station}): {when}"
+                         + (f" ({age} gün önce)." if age >= 1 else "."))
+            if dist is not None and dist > STATION_NOTE_KM:
+                notes.append(f"Bu istasyon ilçe merkezine {dist} km uzakta.")
+        else:
+            notes.append("Belediye istasyonlarında bu bölge için güncel ölçüm yok.")
+
+    if len(failures) == 2:
+        result.error = failures[0].error
+    meta.stale = stale
+    if stale:
+        notes.append("Kaynaklardan biri şu an cevap vermiyor; en son başarıyla alınan değerler gösteriliyor.")
+    meta.fetched_at = _now()
+    return result
+
+
+# ---------------------------------------------------------------- get_source_status
+
+PROBE_STOP_ID = "40010"  # sık kullanılan bir ESHOT durağı; boş liste dönmesi de "ayakta" demek
+
+
+def _probes() -> dict[str, object]:
+    """Kaynak adı -> hafif bir sağlık isteği. Yeni bir kaynak eklenince buraya da eklenmeli."""
+    base = get_settings().izmir_api_base
+    konak = find_district("Konak")
+    lat, lon = konak.lat, konak.lon
+    return {
+        eshot.SOURCE: lambda: get_json(f"{base}/api/iztek/duragayaklasanotobusler/{PROBE_STOP_ID}",
+                                       source=eshot.SOURCE, retries=0),
+        eshot.SOURCE_STOPS: lambda: get_json(
+            f"{base}/api/ibb/cbs/noktayayakinduraklar", source=eshot.SOURCE_STOPS, retries=0,
+            params={"x": f"{lon:.6f}", "y": f"{lat:.6f}", "inCoordSys": "EPSG:4326", "outCoordSys": "EPSG:4326"}),
+        pharmacy.SOURCE: lambda: get_json(f"{base}/api/ibb/nobetcieczaneler", source=pharmacy.SOURCE, retries=0),
+        transit_static.SOURCE_METRO: lambda: get_json(f"{base}/api/metro/istasyonlar",
+                                                      source=transit_static.SOURCE_METRO, retries=0),
+        transit_static.SOURCE_IZBAN: lambda: get_json(f"{base}/api/izban/istasyonlar",
+                                                      source=transit_static.SOURCE_IZBAN, retries=0),
+        transit_static.SOURCE_IZDENIZ: lambda: get_json(f"{base}/api/izdeniz/iskeleler",
+                                                        source=transit_static.SOURCE_IZDENIZ, retries=0),
+        air.SOURCE_IBB: lambda: get_json(f"{base}/api/ibb/cevre/havadegerleri", source=air.SOURCE_IBB, retries=0),
+        air.SOURCE_OPEN_METEO: lambda: get_json(
+            f"{get_settings().open_meteo_air_base}/v1/air-quality", source=air.SOURCE_OPEN_METEO, retries=0,
+            params={"latitude": f"{lat:.4f}", "longitude": f"{lon:.4f}", "current": "european_aqi"}),
+    }
+
+
+def _status_of(source: str) -> SourceStatus:
+    h = breakers.known().get(source)
+    if h is None:
+        return SourceStatus(source=source, state="unknown")
+    if h.state == BreakerState.OPEN:
+        state = "down"
+    elif h.state == BreakerState.HALF_OPEN:
+        state = "recovering"
+    elif h.last_success_at is None and h.consecutive_failures == 0:
+        state = "unknown"
+    elif h.last_success_at is None or (h.last_failure_at and h.last_failure_at > h.last_success_at):
+        state = "degraded"  # son istek hata verdi ama eşik henüz aşılmadı
+    else:
+        state = "up"
+    return SourceStatus(
+        source=source, state=state, consecutive_failures=h.consecutive_failures,
+        last_success_at=h.last_success_at, last_failure_at=h.last_failure_at,
+        last_error=h.last_error if state != "up" else None, retry_in_seconds=h.retry_in_seconds(),
+    )
+
+
+async def get_source_status(probe: bool = True) -> SourceStatusResult:
+    """Her veri kaynağının durumu. probe=True: kapalı olmayan kaynaklara şimdi küçük bir istek atar."""
+    probes = _probes()
+    if probe:
+        # Devresi açık kaynaklar (bekleme süresi dolmadıysa) get_json içinde zaten hemen reddedilir.
+        await asyncio.gather(*(fn() for fn in probes.values()), return_exceptions=True)
+    names = list(probes) + [s for s in breakers.known() if s not in probes]
+    statuses = [_status_of(s) for s in names]
+    notes = []
+    if not probe:
+        notes.append("Canlı deneme yapılmadı; durumlar son gerçek isteklere göre.")
+    down = [s.source for s in statuses if s.state == "down"]
+    if down:
+        notes.append("Kapalı kaynaklar: " + ", ".join(down) + ". Bu kaynaklara bağlı sorulara şu an cevap verilemez.")
+    return SourceStatusResult(
+        sources=statuses,
+        all_up=all(s.state == "up" for s in statuses),
+        meta=Meta(sources=names, fetched_at=_now(), notes=notes),
+    )

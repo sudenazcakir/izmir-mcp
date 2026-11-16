@@ -6,6 +6,7 @@ from typing import Any
 
 import httpx
 
+from .breaker import breakers
 from .cache import cache
 from .config import get_settings
 from .models import ErrorCode, SourceError
@@ -46,8 +47,40 @@ def set_client(c: httpx.AsyncClient | None) -> None:
     _override = c
 
 
-async def get_json(url: str, *, source: str, params: dict[str, Any] | None = None) -> Any:
-    retries = get_settings().http_retries
+def _circuit_open_error(source: str) -> SourceError:
+    h = breakers.health(source)
+    wait = h.retry_in_seconds()
+    when = f"yaklaşık {wait} sn sonra" if wait else "birazdan"
+    return SourceError(
+        code=ErrorCode.CIRCUIT_OPEN, source=source, retryable=True,
+        message=(f"{source} art arda {h.consecutive_failures} kez cevap vermediği için şu an kapalı kabul ediliyor; "
+                 f"{when} yeniden denenecek."),
+        hint="Kullanıcıya bu kaynaktan şu an veri alınamadığını açıkça söyle; veri uydurma.",
+    )
+
+
+async def get_json(url: str, *, source: str, params: dict[str, Any] | None = None,
+                   retries: int | None = None) -> Any:
+    """Kaynağa istek atar; devre kesici açıksa hiç denemeden CIRCUIT_OPEN hatası verir."""
+    if not breakers.allow(source):
+        raise SourceFailure(_circuit_open_error(source))
+    try:
+        data = await _get_json(url, source=source, params=params, retries=retries)
+    except SourceFailure as f:
+        if f.error.code == ErrorCode.NOT_FOUND:
+            breakers.record_success(source)  # kaynak ayakta, sadece kayıt yok
+        else:
+            breakers.record_failure(source, f.error.message)
+        raise
+    except BaseException:
+        breakers.release(source)  # iptal vb.: sayma ama yarı açık deneme kilitli kalmasın
+        raise
+    breakers.record_success(source)
+    return data
+
+
+async def _get_json(url: str, *, source: str, params: dict[str, Any] | None, retries: int | None) -> Any:
+    retries = get_settings().http_retries if retries is None else retries
     last_exc: Exception | None = None
     for attempt in range(retries + 1):
         try:

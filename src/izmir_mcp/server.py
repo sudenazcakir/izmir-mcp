@@ -14,15 +14,17 @@ from mcp.types import ToolAnnotations
 from pydantic import Field
 
 from . import tools
-from .models import PharmacyResult, StopArrivals
+from .models import AirQualityResult, PharmacyResult, SourceStatusResult, StopArrivals
 
 mcp = MCPServer(
     name="izmir-open-data",
     title="İzmir Açık Veri",
     instructions=(
-        "İzmir Büyükşehir Belediyesi açık verisi: ESHOT otobüs varışları, nöbetçi eczaneler. "
+        "İzmir Büyükşehir Belediyesi açık verisi: ESHOT otobüs varışları, nöbetçi eczaneler, hava kalitesi. "
         "Varış süreleri tahminidir (ESHOT dakika vermez). Bir araç `error` döndürürse kullanıcıya "
-        "kaynağın şu an cevap vermediğini açıkça söyle, veri uydurma."
+        "kaynağın şu an cevap vermediğini açıkça söyle, veri uydurma. `circuit_open` hatası, kaynağın art arda "
+        "hata verdiği için bir süre denenmediği anlamına gelir. "
+        "`meta.stale` true ise veri eskidir, bunu belirt. Hangi kaynakların ayakta olduğunu `get_source_status` söyler."
     ),
     version="0.1.0",
 )
@@ -63,6 +65,42 @@ async def find_pharmacies(
     lon: Annotated[float | None, Field(description="Boylam (isteğe bağlı)")] = None,
 ) -> PharmacyResult:
     return await tools.find_pharmacies(district, on_duty, limit, lat, lon)
+
+
+@mcp.tool(
+    title="Hava kalitesi",
+    description=(
+        "Bir İzmir ilçesinin (ör. 'Bornova') ya da konumun hava kalitesini verir: şu anki Avrupa Hava Kalitesi "
+        "İndeksi ve düzeyi, kirletici değerleri (PM2.5, PM10, NO2, SO2, O3, CO), önümüzdeki saatlerin tahmini ve "
+        "en yakın belediye istasyonunun son günlük ölçümü. Anlık/saatlik değerler Open-Meteo modelinden (tahmin), "
+        "istasyon değerleri belediyeden (gerçek ölçüm ama günlük ve birkaç gün gecikmeli). Cevapta bu farkı belirt. "
+        "Dışarı çıkma, yürüme, bisiklet ya da toplu taşıma planı soran sorularda ulaşım araçlarıyla birlikte kullan."
+    ),
+    annotations=READ_ONLY,
+)
+async def get_air_quality(
+    district: Annotated[str | None, Field(description="İzmir ilçesi, ör. 'Bornova'")] = None,
+    lat: Annotated[float | None, Field(description="Enlem (isteğe bağlı)")] = None,
+    lon: Annotated[float | None, Field(description="Boylam (isteğe bağlı)")] = None,
+    hours: Annotated[int, Field(ge=0, le=36, description="Kaç saatlik tahmin listelensin")] = 12,
+) -> AirQualityResult:
+    return await tools.get_air_quality(district, lat, lon, hours)
+
+
+@mcp.tool(
+    title="Veri kaynaklarının durumu",
+    description=(
+        "İzmir veri kaynaklarının (ESHOT, eczaneler, Metro, İZBAN, İZDENİZ…) şu an ayakta olup olmadığını söyler. "
+        "Bir araç hata döndürdüğünde ya da kullanıcı 'sistem çalışıyor mu' diye sorduğunda kullan. "
+        "Art arda hata veren kaynak bir süre 'down' sayılır ve ona istek atılmaz."
+    ),
+    annotations=READ_ONLY,
+)
+async def get_source_status(
+    probe: Annotated[bool, Field(description="Kaynaklara şimdi küçük bir deneme isteği at (false: son bilinen durum)")]
+    = True,
+) -> SourceStatusResult:
+    return await tools.get_source_status(probe)
 
 
 def main() -> None:

@@ -16,6 +16,7 @@ class ErrorCode(StrEnum):
     NOT_FOUND = "not_found"  # durak/ilçe bulunamadı
     INVALID_INPUT = "invalid_input"
     BAD_RESPONSE = "bad_response"  # kaynak cevap verdi ama beklenmeyen biçimde
+    CIRCUIT_OPEN = "circuit_open"  # kaynak art arda hata verdi, bir süre hiç denenmiyor
 
 
 class SourceError(BaseModel):
@@ -88,7 +89,7 @@ class PharmacyResult(BaseModel):
 
 
 class AirReading(BaseModel):
-    """Hava kalitesi ölçümü (2. hafta, Bahar). Şimdiden ortak modelde duruyor."""
+    """Tek bir kirletici değeri: belediye istasyon ölçümü (günlük) ya da Open-Meteo model değeri (saatlik)."""
 
     station: str
     pollutant: str = Field(description="PM10, PM2.5, NO2, SO2, O3, CO ...")
@@ -99,6 +100,45 @@ class AirReading(BaseModel):
     source: str
     lat: float | None = None
     lon: float | None = None
+    distance_km: float | None = Field(default=None, description="Ölçüm noktasının ilçe merkezine uzaklığı")
+
+
+class HourlyAqi(BaseModel):
+    time: datetime
+    european_aqi: int | None = None
+    level: str | None = Field(default=None, description="Avrupa AQI düzeyi (Türkçe)")
+    pm2_5: float | None = None
+    pm10: float | None = None
+
+
+class AirQualityResult(BaseModel):
+    district: str | None = None
+    european_aqi: int | None = Field(default=None, description="Şu anki Avrupa Hava Kalitesi İndeksi (Open-Meteo, model)")
+    level: str | None = Field(default=None, description="AQI düzeyi: iyi, makul, orta, kötü, çok kötü, son derece kötü")
+    current: list[AirReading] = Field(default_factory=list, description="Şu anki saatlik değerler (Open-Meteo, model)")
+    station_daily: list[AirReading] = Field(
+        default_factory=list, description="En yakın belediye istasyonunun son günlük ortalaması (gerçek ölçüm)")
+    outlook: list[HourlyAqi] = Field(default_factory=list, description="Önümüzdeki saatlerin AQI tahmini")
+    meta: Meta
+    error: SourceError | None = None
+
+
+class SourceStatus(BaseModel):
+    source: str
+    state: str = Field(description="'up' (ayakta), 'degraded' (son istek hata verdi), 'down' (kapalı, "
+                                   "istek atılmıyor), 'recovering' (yeniden deneniyor), 'unknown' (henüz denenmedi)")
+    consecutive_failures: int = 0
+    last_success_at: datetime | None = None
+    last_failure_at: datetime | None = None
+    last_error: str | None = None
+    retry_in_seconds: int | None = Field(default=None, description="Kapalıysa kaç saniye sonra yeniden denenecek")
+
+
+class SourceStatusResult(BaseModel):
+    sources: list[SourceStatus] = Field(default_factory=list)
+    all_up: bool
+    meta: Meta
+    error: SourceError | None = None
 
 
 # --- statik veri (gece yükleme işi ve veritabanı) ---

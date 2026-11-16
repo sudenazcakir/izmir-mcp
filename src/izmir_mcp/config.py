@@ -8,8 +8,13 @@ class Settings(BaseSettings):
 
     izmir_api_base: str = "https://openapi.izmir.bel.tr"
     eshot_api_base: str = "https://acikveriwapi.izmir.bel.tr"
+    open_meteo_air_base: str = "https://air-quality-api.open-meteo.com"
     http_timeout_seconds: float = 8.0
     http_retries: int = 3
+
+    # devre kesici: art arda bu kadar hata -> kaynak bu kadar saniye "kapalı" sayılır
+    breaker_failure_threshold: int = 3
+    breaker_cooldown_seconds: float = 60.0
 
     database_url: str | None = None
 
