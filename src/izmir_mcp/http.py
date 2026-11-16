@@ -60,15 +60,17 @@ def _circuit_open_error(source: str) -> SourceError:
 
 
 async def get_json(url: str, *, source: str, params: dict[str, Any] | None = None,
-                   retries: int | None = None, as_text: bool = False) -> Any:
+                   retries: int | None = None, as_text: bool = False, head: bool = False) -> Any:
     """Kaynağa istek atar; devre kesici açıksa hiç denemeden CIRCUIT_OPEN hatası verir.
 
     as_text=True: JSON yerine metin döndürür (CSV dosyaları için; UTF-8, olmazsa Windows-1254).
+    head=True: içeriği indirmeyen hafif sağlık kontrolü (HEAD isteği), None döner. Sunucu 4xx'ten küçük bir
+    kod ya da 405 (HEAD desteklenmiyor ama sunucu ayakta) dönerse başarılı sayılır; 404 ve 5xx hata sayılır.
     """
     if not breakers.allow(source):
         raise SourceFailure(_circuit_open_error(source))
     try:
-        data = await _get_json(url, source=source, params=params, retries=retries, as_text=as_text)
+        data = await _get_json(url, source=source, params=params, retries=retries, as_text=as_text, head=head)
     except SourceFailure as f:
         if f.error.code == ErrorCode.NOT_FOUND:
             breakers.record_success(source)  # kaynak ayakta, sadece kayıt yok
@@ -90,13 +92,17 @@ def _decode_text(content: bytes) -> str:
 
 
 async def _get_json(url: str, *, source: str, params: dict[str, Any] | None, retries: int | None,
-                    as_text: bool = False) -> Any:
+                    as_text: bool = False, head: bool = False) -> Any:
     retries = get_settings().http_retries if retries is None else retries
     last_exc: Exception | None = None
     for attempt in range(retries + 1):
         try:
-            r = await client().get(url, params=params)
+            r = await (client().head(url, params=params) if head else client().get(url, params=params))
             if r.status_code >= 500:
+                raise httpx.HTTPStatusError(f"{r.status_code}", request=r.request, response=r)
+            if head:
+                if r.status_code < 400 or r.status_code == 405:
+                    return None
                 raise httpx.HTTPStatusError(f"{r.status_code}", request=r.request, response=r)
             if r.status_code == 404:
                 raise SourceFailure(SourceError(code=ErrorCode.NOT_FOUND, source=source,

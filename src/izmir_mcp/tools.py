@@ -488,11 +488,12 @@ def _probes() -> dict[str, object]:
             f"{get_settings().open_meteo_air_base}/v1/air-quality", source=air.SOURCE_OPEN_METEO, retries=0,
             params={"latitude": f"{lat:.4f}", "longitude": f"{lon:.4f}", "current": "european_aqi"}),
     }
+    # Duyuru CSV'si (~17 KB) ve hat listesi (~250 KB) büyük: içeriği indirmeyen HEAD isteğiyle yoklanıyor.
     probes[announcements.SOURCE_CSV] = lambda: get_json(
-        get_settings().eshot_announcements_csv_url, source=announcements.SOURCE_CSV, retries=0, as_text=True)
+        get_settings().eshot_announcements_csv_url, source=announcements.SOURCE_CSV, retries=0, head=True)
     probes[announcements.SOURCE_LINES] = lambda: get_json(
         f"{get_settings().eshot_api_base}/AcikVeriEshot/Hatlar/HatlariGetir", source=announcements.SOURCE_LINES,
-        retries=0)
+        retries=0, head=True)
     if store.enabled():  # REDIS_URL yoksa önbellek yalnız bellekte; listede gösterme
         probes[SOURCE_REDIS] = store.ping
     return probes
