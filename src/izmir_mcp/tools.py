@@ -1,7 +1,7 @@
 """Araçların iş mantığı. server.py bunları MCP aracı olarak kaydeder; testler doğrudan çağırır."""
 
 import asyncio
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from . import db
 from .breaker import BreakerState, breakers
@@ -16,10 +16,12 @@ from .models import (
     Announcement,
     AnnouncementsResult,
     Arrival,
+    DayPeriod,
     ErrorCode,
     HourlyAqi,
     LineNote,
     Meta,
+    NearbyStation,
     Pharmacy,
     PharmacyResult,
     SourceError,
@@ -27,8 +29,12 @@ from .models import (
     SourceStatusResult,
     StopArrivals,
     StopRef,
+    TransitDirections,
+    TripPoint,
+    WeatherNow,
+    WeatherResult,
 )
-from .sources import air, announcements, eshot, pharmacy, transit_static
+from .sources import air, announcements, eshot, pharmacy, transit_static, weather
 from .text import norm, parse_float, strip_stop_words
 
 MAX_STOPS_PER_QUERY = 10  # Bornova Metro gibi aktarma merkezlerinde aynı adlı 10 peron var
@@ -118,6 +124,13 @@ async def get_stop_arrivals(stop: str, limit: int = 8) -> StopArrivals:
             hint="Durak numarası (ör. 40010) ya da metro/İZBAN istasyonu, iskele veya ilçe adı içeren bir ad deneyin.",
         ))
 
+    return await arrivals_for_stops(stop, stops, notes, limit, started)
+
+
+async def arrivals_for_stops(query: str, stops: list[StopRef], notes: list[str], limit: int,
+                             started: datetime | None = None) -> StopArrivals:
+    """Bilinen duraklar için ESHOT'tan yaklaşan otobüsler. Canlı harita (web /api/live) bunu doğrudan çağırır."""
+    started = started or _now()
     sem = asyncio.Semaphore(5)
 
     async def fetch(ref: StopRef):
@@ -172,7 +185,7 @@ async def get_stop_arrivals(stop: str, limit: int = 8) -> StopArrivals:
     elif failures:
         notes.append(f"{len(failures)} peron için ESHOT cevap vermedi; sonuçlar eksik olabilir.")
     return StopArrivals(
-        query=stop, stops=stops, arrivals=arrivals, error=error,
+        query=query, stops=stops, arrivals=arrivals, error=error,
         meta=Meta(sources=[eshot.SOURCE], fetched_at=_now(), notes=notes),
     )
 
@@ -539,3 +552,207 @@ async def get_source_status(probe: bool = True) -> SourceStatusResult:
         all_up=all(s.state == "up" for s in statuses),
         meta=Meta(sources=names, fetched_at=_now(), notes=notes),
     )
+
+
+# ---------------------------------------------------------------- get_transit_directions
+
+NEAR_STATION_KM = 1.5
+USER_WORDS = {"konumum", "konumumdan", "buradan", "bulundugum yer", "bulundugum yerden", "benim konumum", "konum"}
+
+
+async def _resolve_place(q: str) -> TripPoint | None:
+    """Yer adını koordinata çevirir: önce istasyon/iskele/ilçe, sonra ESHOT durak adı."""
+    n = norm(q)
+    if not n:
+        return None
+    # "Karşıyaka İskele" vapuru, "Bornova Metro" metroyu kastediyor: önce o türde ara.
+    hints = (("iskele", "piers", "pier"), ("vapur", "piers", "pier"), ("metro", "metro", "metro"),
+             ("izban", "izban", "izban"))
+    for word, k, kind in hints:
+        if word in n.split():
+            base = " ".join(w for w in n.split() if w not in {word, "istasyonu", "istasyon"})
+            for x in await transit_static.stations_or_snapshot(k):
+                if base and norm(x.name) == base:
+                    return TripPoint(query=q, name=x.name, kind=kind, lat=x.lat, lon=x.lon)
+    hit = await _landmark_coords(n)
+    if hit is None and (s := strip_stop_words(n)) != n:
+        hit = await _landmark_coords(s)
+    if hit is not None:
+        lat, lon, name = hit
+        kind = "district"
+        for k, label in (("metro", "metro"), ("izban", "izban"), ("piers", "pier")):
+            if any(x.name == name for x in await transit_static.stations_or_snapshot(k)):
+                kind = label
+                break
+        return TripPoint(query=q, name=name, kind=kind, lat=lat, lon=lon)
+    rows = await db.search_stops(strip_stop_words(q), limit=1)
+    if rows and rows[0].get("lat") is not None:
+        r = rows[0]
+        return TripPoint(query=q, name=r["name"], kind="stop", lat=r["lat"], lon=r["lon"])
+    return None
+
+
+def transit_maps_url(o: TripPoint, d: TripPoint) -> str:
+    return (
+        "https://www.google.com/maps/dir/?api=1"
+        f"&origin={o.lat:.6f},{o.lon:.6f}&destination={d.lat:.6f},{d.lon:.6f}&travelmode=transit"
+    )
+
+
+async def get_transit_directions(origin: str, destination: str, origin_lat: float | None = None,
+                                 origin_lon: float | None = None) -> TransitDirections:
+    meta = Meta(sources=["İzmir Metro", "İZBAN", "İZDENİZ", "ESHOT"], fetched_at=_now())
+    points: list[TripPoint | None] = []
+    for label, q in (("Başlangıç", origin), ("Varış", destination)):
+        if label == "Başlangıç" and origin_lat is not None and origin_lon is not None and (
+            not q.strip() or norm(q) in USER_WORDS
+        ):
+            points.append(TripPoint(query=q or "konumum", name="Konumun", kind="user", lat=origin_lat, lon=origin_lon))
+            continue
+        p = await _resolve_place(q)
+        if p is None:
+            return TransitDirections(meta=meta, error=SourceError(
+                code=ErrorCode.NOT_FOUND,
+                message=f"{label} noktası '{q}' bulunamadı.",
+                hint="İlçe, semt, metro/İZBAN istasyonu, iskele ya da durak adı yaz (ör. 'Bornova Metro', 'Konak İskele').",
+            ))
+        points.append(p)
+    o, d = points
+    assert o is not None and d is not None
+
+    near: list[NearbyStation] = []
+    for kind, system in (("metro", "metro"), ("izban", "izban"), ("piers", "ferry")):
+        items = await transit_static.stations_or_snapshot(kind)
+        for end, pt in (("origin", o), ("destination", d)):
+            best = min(((haversine_km(pt.lat, pt.lon, x.lat, x.lon), x.name) for x in items
+                        if getattr(x, "active", True)), default=None)
+            if best and best[0] <= NEAR_STATION_KM:
+                near.append(NearbyStation(system=system, name=best[1], distance_km=round(best[0], 2), end=end))
+
+    meta.notes.append(
+        "Bu araç güzergahı kendisi hesaplamaz: uçları ve yakın raylı/vapur duraklarını verir. Seçeneklerin süre "
+        "karşılaştırması ve aktarmalar maps_url'deki Google Haritalar toplu taşıma tarifinde."
+    )
+    return TransitDirections(
+        origin=o, destination=d, straight_km=round(haversine_km(o.lat, o.lon, d.lat, d.lon), 1),
+        nearby_stations=near, maps_url=transit_maps_url(o, d), meta=meta,
+    )
+
+
+# ---------------------------------------------------------------- get_weather
+
+PERIODS = (("sabah", 7, 11), ("öğle", 12, 16), ("akşam", 17, 21))
+WEATHER_SEVERITY = [0, 1, 2, 3, 45, 48, 51, 53, 55, 61, 80, 63, 81, 71, 73, 56, 57, 65, 66, 67, 82, 75, 77, 85, 86,
+                    95, 96, 99]
+
+
+def clothing_for(p: DayPeriod) -> list[str]:
+    """Hissedilen sıcaklık, yağış, rüzgâr, UV ve hava kalitesine göre basit, açıklanabilir giyim önerisi."""
+    out: list[str] = []
+    feels = p.feels_like_min_c if p.feels_like_min_c is not None else p.temp_min_c
+    if feels is not None:
+        if feels >= 27:
+            out.append("tişört, ince ve açık renkli giysiler")
+        elif feels >= 22:
+            out.append("tişört ya da ince gömlek")
+        elif feels >= 17:
+            out.append("uzun kollu üst ya da yanına ince bir hırka")
+        elif feels >= 12:
+            out.append("kazak üstüne hafif mont ya da ceket")
+        elif feels >= 7:
+            out.append("kalın mont, kazak")
+        else:
+            out.append("kaban, atkı, bere ve eldiven")
+    if (p.rain_chance_pct or 0) >= 40 or (p.rain_mm or 0) >= 0.5:
+        out.append("şemsiye ya da yağmurluk, su geçirmeyen ayakkabı")
+    if (p.wind_max_kmh or 0) >= 30:
+        out.append("rüzgârlık (rüzgâr sert)")
+    if (p.uv_max or 0) >= 6:
+        out.append("şapka, güneş gözlüğü ve güneş kremi")
+    if (p.european_aqi_max or 0) >= 60:
+        out.append("hava kalitesi kötü: hassas kişiler maske takabilir, uzun dış mekân sporundan kaçının")
+    if p.temp_min_c is not None and p.temp_max_c is not None and p.temp_max_c - p.temp_min_c >= 6:
+        out.append("gün içinde sıcaklık değişiyor: katmanlı giyin")
+    return out
+
+
+def _vals(hourly: dict, key: str, idx: list[int]) -> list[float]:
+    arr = hourly.get(key) or []
+    return [arr[i] for i in idx if i < len(arr) and isinstance(arr[i], int | float)]
+
+
+async def get_weather(district: str | None = None, lat: float | None = None, lon: float | None = None,
+                      day: str = "bugün") -> WeatherResult:
+    started = _now()
+    meta = Meta(sources=[weather.SOURCE, air.SOURCE_OPEN_METEO], fetched_at=started)
+    day_n = "yarın" if norm(day) in {"yarin", "tomorrow", "ertesi gun"} else "bugün"
+    d = find_district(district) if district else None
+    if district and d is None and (lat is None or lon is None):
+        return WeatherResult(day=day_n, meta=meta, error=SourceError(
+            code=ErrorCode.INVALID_INPUT, message=f"'{district}' İzmir ilçeleri arasında bulunamadı.",
+            hint="Geçerli ilçeler: " + ", ".join(x.name for x in DISTRICTS)))
+    if d is None and (lat is None or lon is None):
+        d = find_district("Konak")
+        meta.notes.append("Yer belirtilmediği için İzmir merkezi (Konak) kullanıldı.")
+    ref_lat, ref_lon = (lat, lon) if lat is not None and lon is not None else (d.lat, d.lon)
+    place = d.name if d is not None and (lat is None or lon is None) else "Konumun"
+
+    wx_task = asyncio.create_task(weather.forecast(ref_lat, ref_lon))
+    aq_task = asyncio.create_task(air.open_meteo(ref_lat, ref_lon))
+    try:
+        data, cached, stale = await wx_task
+    except SourceFailure as f:
+        aq_task.cancel()
+        return WeatherResult(place=place, day=day_n, meta=meta, error=f.error)
+    try:
+        aq, _, _ = await aq_task
+    except SourceFailure:
+        aq = {}
+        meta.notes.append("Hava kalitesi tahmini alınamadı; öneriler yalnız hava durumuna göre.")
+
+    cur = data.get("current") or {}
+    now = WeatherNow(
+        temperature_c=cur.get("temperature_2m"), feels_like_c=cur.get("apparent_temperature"),
+        description=weather.describe(cur.get("weather_code")), wind_kmh=cur.get("wind_speed_10m"),
+        humidity_pct=cur.get("relative_humidity_2m"), precipitation_mm=cur.get("precipitation"),
+    )
+    hourly = data.get("hourly") or {}
+    times = [air.parse_local_time(t, data.get("utc_offset_seconds")) for t in hourly.get("time") or []]
+    local_now = started.astimezone(times[0].tzinfo) if times else started
+    target = local_now.date() if day_n == "bugün" else (local_now + timedelta(days=1)).date()
+    aq_by_time = {}
+    aq_h = aq.get("hourly") or {}
+    for t, v in zip(aq_h.get("time") or [], aq_h.get("european_aqi") or [], strict=False):
+        if isinstance(v, int | float):
+            aq_by_time[t] = v
+
+    periods: list[DayPeriod] = []
+    for name, h0, h1 in PERIODS:
+        idx = [i for i, t in enumerate(times) if t.date() == target and h0 <= t.hour <= h1]
+        if not idx or (day_n == "bugün" and local_now.hour > h1):
+            continue
+        temps = _vals(hourly, "temperature_2m", idx)
+        feels = _vals(hourly, "apparent_temperature", idx)
+        codes = [int(c) for c in _vals(hourly, "weather_code", idx)]
+        worst = max(codes, key=lambda c: WEATHER_SEVERITY.index(c) if c in WEATHER_SEVERITY else 0, default=None)
+        aqis = [aq_by_time[hourly["time"][i]] for i in idx if hourly["time"][i] in aq_by_time]
+        p = DayPeriod(
+            name=name, hours=f"{h0:02d}-{h1:02d}",
+            temp_min_c=min(temps, default=None), temp_max_c=max(temps, default=None),
+            feels_like_min_c=min(feels, default=None),
+            rain_chance_pct=max(_vals(hourly, "precipitation_probability", idx), default=None),
+            rain_mm=round(sum(_vals(hourly, "precipitation", idx)), 1) if idx else None,
+            wind_max_kmh=max(_vals(hourly, "wind_gusts_10m", idx) or _vals(hourly, "wind_speed_10m", idx),
+                             default=None),
+            uv_max=max(_vals(hourly, "uv_index", idx), default=None),
+            description=weather.describe(worst),
+            european_aqi_max=max(aqis, default=None), aqi_level=air.aqi_level(max(aqis, default=None)),
+        )
+        p.clothing = clothing_for(p)
+        periods.append(p)
+    if not periods:
+        meta.notes.append("Bugünün sabah/öğle/akşam saatleri geçti; yarın için day='yarın' ile sor.")
+    meta.notes.append("Hava durumu ve hava kalitesi Open-Meteo model tahminidir; giyim önerileri kurala dayalıdır.")
+    meta.cached, meta.stale = cached, stale
+    return WeatherResult(place=place, lat=ref_lat, lon=ref_lon, day=day_n, date=target.isoformat(), now=now,
+                         periods=periods, meta=meta)

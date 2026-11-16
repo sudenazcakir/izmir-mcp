@@ -8,6 +8,7 @@ from izmir_mcp import http
 from izmir_mcp.breaker import breakers
 from izmir_mcp.cache import cache, store
 from izmir_mcp.config import get_settings
+from izmir_mcp.sources import eshot
 
 FIX = Path(__file__).parent / "fixtures"
 
@@ -49,6 +50,7 @@ def fake(monkeypatch):
     monkeypatch.setattr(get_settings(), "demo_down_sources", "")  # .env'deki demo anahtarı testleri bozmasın
     store.set_redis(None)
     cache.clear()
+    eshot.clear_arrivals_cache()
     breakers.reset()
     f = FakeIzmir()
     http.set_client(httpx.AsyncClient(transport=httpx.MockTransport(f)))
@@ -56,5 +58,6 @@ def fake(monkeypatch):
     http.set_client(None)
     store.set_redis(None)
     cache.clear()
+    eshot.clear_arrivals_cache()
     breakers.reset()
     get_settings.cache_clear()

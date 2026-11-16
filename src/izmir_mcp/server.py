@@ -14,7 +14,15 @@ from mcp.types import ToolAnnotations
 from pydantic import Field
 
 from . import tools
-from .models import AirQualityResult, AnnouncementsResult, PharmacyResult, SourceStatusResult, StopArrivals
+from .models import (
+    AirQualityResult,
+    AnnouncementsResult,
+    PharmacyResult,
+    SourceStatusResult,
+    StopArrivals,
+    TransitDirections,
+    WeatherResult,
+)
 
 mcp = MCPServer(
     name="izmir-open-data",
@@ -66,6 +74,46 @@ async def find_pharmacies(
     lon: Annotated[float | None, Field(description="Boylam (isteğe bağlı)")] = None,
 ) -> PharmacyResult:
     return await tools.find_pharmacies(district, on_duty, limit, lat, lon)
+
+
+@mcp.tool(
+    title="Toplu taşıma yol tarifi",
+    description=(
+        "İzmir'de bir yerden bir yere toplu taşımayla nasıl gidileceği sorulduğunda kullan (ör. 'Bornova'dan "
+        "Konak'a nasıl giderim?'). İki ucu (ilçe, semt, metro/İZBAN istasyonu, iskele ya da durak) koordinata "
+        "çevirir, uçlara yakın metro/İZBAN istasyonlarını ve iskeleleri listeler ve Google Haritalar toplu taşıma "
+        "tarifi bağlantısı (maps_url) verir. Kullanıcı konumunu paylaştıysa ve 'buradan/konumumdan' diyorsa "
+        "origin='konumum' ile origin_lat/origin_lon ver. Başlangıçtaki durağa yaklaşan otobüsler için ayrıca "
+        "get_stop_arrivals kullanılabilir."
+    ),
+    annotations=READ_ONLY,
+)
+async def get_transit_directions(
+    origin: Annotated[str, Field(description="Başlangıç yeri, ör. 'Bornova' ya da 'konumum'")],
+    destination: Annotated[str, Field(description="Varış yeri, ör. 'Konak İskele'")],
+    origin_lat: Annotated[float | None, Field(description="Kullanıcının enlemi (isteğe bağlı)")] = None,
+    origin_lon: Annotated[float | None, Field(description="Kullanıcının boylamı (isteğe bağlı)")] = None,
+) -> TransitDirections:
+    return await tools.get_transit_directions(origin, destination, origin_lat, origin_lon)
+
+
+@mcp.tool(
+    title="Hava durumu ve giyim önerisi",
+    description=(
+        "Bir İzmir ilçesi ya da konum için şu anki hava durumunu ve bugünün/yarının sabah (07-11), öğle (12-16), "
+        "akşam (17-21) dönemlerini verir: sıcaklık, hissedilen, yağış olasılığı, rüzgâr, UV, hava kalitesi (AQI) "
+        "ve her dönem için kurala dayalı giyim önerileri (`clothing`). 'Ne giysem?', 'şemsiye alayım mı?', "
+        "'yarın hava nasıl?' gibi sorularda kullan. Veriler Open-Meteo model tahminidir."
+    ),
+    annotations=READ_ONLY,
+)
+async def get_weather(
+    district: Annotated[str | None, Field(description="İzmir ilçesi, ör. 'Bornova'")] = None,
+    lat: Annotated[float | None, Field(description="Enlem (isteğe bağlı)")] = None,
+    lon: Annotated[float | None, Field(description="Boylam (isteğe bağlı)")] = None,
+    day: Annotated[str, Field(description="'bugün' ya da 'yarın'")] = "bugün",
+) -> WeatherResult:
+    return await tools.get_weather(district, lat, lon, day)
 
 
 @mcp.tool(

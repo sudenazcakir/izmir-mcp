@@ -210,3 +210,69 @@ class Pier(BaseModel):
     lon: float
     car_ferry: bool = False
     active: bool = True
+
+
+class TripPoint(BaseModel):
+    query: str = Field(description="Kullanıcının yazdığı yer")
+    name: str = Field(description="Eşleşen yer (ilçe, istasyon, iskele, durak ya da 'Konumun')")
+    kind: str = Field(description="district | metro | izban | pier | stop | user")
+    lat: float
+    lon: float
+
+
+class NearbyStation(BaseModel):
+    system: str = Field(description="metro | izban | ferry")
+    name: str
+    distance_km: float
+    end: str = Field(description="origin | destination: hangi uca yakın")
+
+
+class TransitDirections(BaseModel):
+    origin: TripPoint | None = None
+    destination: TripPoint | None = None
+    straight_km: float | None = Field(default=None, description="İki nokta arası kuş uçuşu mesafe")
+    nearby_stations: list[NearbyStation] = Field(
+        default_factory=list, description="Uçlara 1,5 km'den yakın metro/İZBAN istasyonları ve iskeleler"
+    )
+    maps_url: str | None = Field(
+        default=None, description="Google Haritalar toplu taşıma tarifi (sayfa bunu düğme olarak gösterir)"
+    )
+    meta: Meta
+    error: SourceError | None = None
+
+
+class WeatherNow(BaseModel):
+    temperature_c: float | None = None
+    feels_like_c: float | None = None
+    description: str | None = None
+    wind_kmh: float | None = None
+    humidity_pct: float | None = None
+    precipitation_mm: float | None = None
+
+
+class DayPeriod(BaseModel):
+    name: str = Field(description="sabah | öğle | akşam | gece")
+    hours: str = Field(description="ör. '07-11'")
+    temp_min_c: float | None = None
+    temp_max_c: float | None = None
+    feels_like_min_c: float | None = None
+    rain_chance_pct: float | None = Field(default=None, description="En yüksek yağış olasılığı")
+    rain_mm: float | None = None
+    wind_max_kmh: float | None = None
+    uv_max: float | None = None
+    description: str | None = Field(default=None, description="Dönemin en kötü hava durumu (ör. 'sağanak')")
+    european_aqi_max: float | None = Field(default=None, description="Open-Meteo hava kalitesi tahmini (en kötü saat)")
+    aqi_level: str | None = None
+    clothing: list[str] = Field(default_factory=list, description="Kurala dayalı giyim önerileri")
+
+
+class WeatherResult(BaseModel):
+    place: str | None = None
+    lat: float | None = None
+    lon: float | None = None
+    day: str = Field(description="bugün | yarın")
+    date: str | None = None
+    now: WeatherNow | None = None
+    periods: list[DayPeriod] = Field(default_factory=list)
+    meta: Meta
+    error: SourceError | None = None

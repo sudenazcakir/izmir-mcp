@@ -68,13 +68,68 @@
   }
   .send:disabled { opacity: .5; cursor: default; }
   .foot { max-width: 760px; margin: 6px auto 0; font-size: 12px; color: var(--muted); }
+  .loc-row { max-width: 760px; margin: 0 auto 8px; display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); }
+  .loc-btn {
+    font: inherit; font-size: 13px; cursor: pointer; color: var(--fg); background: var(--bg);
+    border: 1px solid var(--line); border-radius: 999px; padding: 4px 12px;
+  }
+  .loc-btn { flex: none; white-space: nowrap; }
+  .loc-btn[aria-pressed="true"] { border-color: var(--accent); background: var(--accent-soft); }
+  .places { white-space: normal; margin-top: 12px; display: grid; gap: 8px; }
+  .place { border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; background: var(--bg); }
+  .place .top { display: flex; gap: 10px; align-items: baseline; }
+  .place .num { flex: none; width: 22px; height: 22px; border-radius: 50%; background: var(--accent); color: var(--accent-ink);
+    font-size: 12px; font-weight: 700; display: inline-flex; align-items: center; justify-content: center; }
+  .place .name { font-weight: 600; }
+  .place .dist { margin-left: auto; color: var(--muted); font-size: 13px; white-space: nowrap; }
+  .place .addr { color: var(--muted); font-size: 13.5px; margin: 2px 0 0 32px; }
+  .place .acts { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0 0 32px; }
+  .place .acts a { font-size: 13px; text-decoration: none; color: var(--accent); border: 1px solid var(--line);
+    border-radius: 999px; padding: 3px 10px; background: var(--surface); }
+  .place .acts a:hover { border-color: var(--accent); }
+  .map { height: 260px; border-radius: 12px; border: 1px solid var(--line); overflow: hidden; }
+  .map-note { font-size: 12px; color: var(--muted); }
+  .pin { width: 26px; height: 26px; border-radius: 50%; background: #0a6a86; color: #fff; border: 2px solid #fff;
+    box-shadow: 0 1px 4px rgba(0,0,0,.4); font: 700 12px/22px system-ui, sans-serif; text-align: center; }
+  .me { width: 16px; height: 16px; border-radius: 50%; background: #2f7bf6; border: 3px solid #fff; box-shadow: 0 0 0 4px rgba(47,123,246,.3); }
+  .leaflet-popup-content a { font-weight: 600; }
+  .trip { white-space: normal; margin-top: 12px; display: grid; gap: 10px; border: 1px solid var(--line);
+    border-radius: 12px; padding: 12px; background: var(--bg); }
+  .trip .ends { display: grid; gap: 4px; font-size: 14.5px; }
+  .trip .ends b { display: inline-block; width: 18px; color: var(--accent); }
+  .trip .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .trip .chips span { font-size: 12.5px; background: var(--accent-soft); border-radius: 999px; padding: 2px 9px; }
+  .trip .go { display: block; text-align: center; text-decoration: none; font-weight: 600; border-radius: 12px;
+    padding: 10px 14px; background: var(--accent); color: var(--accent-ink); }
+  .trip .map { height: 200px; }
+  .pin.b { background: #c2410c; }
+  .live { white-space: normal; margin-top: 12px; display: grid; gap: 8px; }
+  .live .map { height: 260px; }
+  .live .status { font-size: 12.5px; color: var(--muted); display: flex; align-items: center; gap: 6px; }
+  .live .dot { width: 8px; height: 8px; border-radius: 50%; background: #16a34a; animation: blink 2s infinite; }
+  .live .status.off .dot { background: var(--muted); animation: none; }
+  .bus-row { display: flex; align-items: center; gap: 10px; border: 1px solid var(--line); border-radius: 12px;
+    padding: 8px 10px; background: var(--bg); font-size: 14px; }
+  .bus-row .ln { flex: none; min-width: 42px; text-align: center; font-weight: 700; border-radius: 8px;
+    padding: 2px 6px; background: #f59e0b; color: #1f1300; }
+  .bus-row .info { flex: 1; min-width: 0; }
+  .bus-row .info small { display: block; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .bus-row button { font: inherit; font-size: 13px; cursor: pointer; color: var(--accent); background: var(--surface);
+    border: 1px solid var(--line); border-radius: 999px; padding: 3px 10px; white-space: nowrap; }
+  .bus-row.on { border-color: var(--accent); }
+  .bus-row.on button { background: var(--accent); color: var(--accent-ink); }
+  .bus { padding: 2px 6px; border-radius: 8px; background: #f59e0b; color: #1f1300; border: 2px solid #fff;
+    box-shadow: 0 1px 4px rgba(0,0,0,.45); font: 700 12px/16px system-ui, sans-serif; white-space: nowrap; }
+  .bus.on { background: #dc2626; color: #fff; transform: scale(1.2); }
+  .stop-pin { width: 22px; height: 22px; border-radius: 6px; background: #0a6a86; border: 2px solid #fff;
+    box-shadow: 0 1px 4px rgba(0,0,0,.4); font-size: 12px; line-height: 18px; text-align: center; }
 </style>
 </head>
 <body>
 <header>
   <div class="wrap">
     <h1>İzmir Asistanı</h1>
-    <p>İzmir Büyükşehir açık verisiyle otobüs, nöbetçi eczane ve hava kalitesi bilgisi</p>
+    <p>İzmir açık verisiyle otobüs, yol tarifi, nöbetçi eczane, hava durumu ve hava kalitesi</p>
   </div>
 </header>
 <main id="scroll">
@@ -83,14 +138,22 @@
       <h2>Merhaba, ne öğrenmek istersin?</h2>
       <div class="examples">
         <button type="button">Bornova Metro durağına sıradaki otobüs ne zaman?</button>
+        <button type="button">Otobüsüm nerede? Bornova Metro'ya gelenleri haritada göster</button>
         <button type="button">Buca'da bugün nöbetçi eczane hangisi?</button>
+        <button type="button">Bana en yakın nöbetçi eczane hangisi?</button>
         <button type="button">Bornova'da hava kalitesi nasıl, akşam dışarı çıkılır mı?</button>
+        <button type="button">Bugün Konak'ta ne giysem? Sabah, öğle, akşam</button>
         <button type="button">Konak İskele'ye hangi otobüsler yaklaşıyor?</button>
+        <button type="button">Bornova'dan Konak'a toplu taşımayla nasıl giderim?</button>
       </div>
     </div>
   </div>
 </main>
 <form id="form">
+  <div class="loc-row">
+    <button class="loc-btn" id="loc" type="button" aria-pressed="false">📍 Konumumu kullan</button>
+    <span id="locmsg">Yakındaki eczane, durak ve yol tarifi için</span>
+  </div>
   <div class="bar">
     <textarea id="q" rows="1" maxlength="1000" placeholder="Sorunu yaz…" aria-label="Soru"></textarea>
     <button class="send" id="send" type="submit">Sor</button>
@@ -99,9 +162,221 @@
 </form>
 <script>
 (() => {
+  const LEAFLET = "/static/vendor/leaflet/";  // kendi sunucumuzdan; dış CDN yok (bkz. vendor/leaflet/README.md)
+  let userLoc = null;  // {lat, lon}; yalnız bu sayfada tutulur, kaydedilmez
+  let leafletReady = null;
+
+  const locBtn = document.getElementById("loc"), locMsg = document.getElementById("locmsg");
+  locBtn.addEventListener("click", () => {
+    if (userLoc) {
+      userLoc = null; locBtn.setAttribute("aria-pressed", "false"); locBtn.textContent = "📍 Konumumu kullan";
+      locMsg.textContent = "Konum kapalı"; return;
+    }
+    if (!navigator.geolocation) { locMsg.textContent = "Tarayıcın konum paylaşmayı desteklemiyor."; return; }
+    locMsg.textContent = "Konum alınıyor…";
+    navigator.geolocation.getCurrentPosition(pos => {
+      userLoc = { lat: pos.coords.latitude, lon: pos.coords.longitude };
+      locBtn.setAttribute("aria-pressed", "true"); locBtn.textContent = "📍 Konum açık";
+      locMsg.textContent = "Sadece soruları cevaplamak için kullanılır, kaydedilmez. Kapatmak için tekrar bas.";
+    }, () => { locMsg.textContent = "Konum izni verilmedi. İlçe adını yazarak da sorabilirsin."; },
+    { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 });
+  });
+
+  function km(a, b) {
+    const r = Math.PI / 180, dLat = (b.lat - a.lat) * r, dLon = (b.lon - a.lon) * r;
+    const h = Math.sin(dLat / 2) ** 2 + Math.cos(a.lat * r) * Math.cos(b.lat * r) * Math.sin(dLon / 2) ** 2;
+    return 12742 * Math.asin(Math.sqrt(h));
+  }
+  const fmtKm = d => d == null ? "" : d < 1 ? Math.round(d * 1000) + " m" : d.toFixed(1).replace(".", ",") + " km";
+  const ll = p => encodeURIComponent(p.lat + "," + p.lon);
+  const showUrl = p => "https://www.google.com/maps/search/?api=1&query=" + ll(p);
+  const routeUrl = p => "https://www.google.com/maps/dir/?api=1&destination=" + ll(p) +
+    (userLoc ? "&origin=" + ll(userLoc) : "");
+
+  function loadLeaflet() {
+    if (window.L) return Promise.resolve();
+    if (leafletReady) return leafletReady;
+    leafletReady = new Promise((ok, fail) => {
+      const css = document.createElement("link");
+      css.rel = "stylesheet"; css.href = LEAFLET + "leaflet.css";
+      document.head.appendChild(css);
+      const js = document.createElement("script");
+      js.src = LEAFLET + "leaflet.js"; js.onload = ok; js.onerror = fail;
+      document.head.appendChild(js);
+    });
+    return leafletReady;
+  }
+
+  const SYS = { metro: "🚇 Metro", izban: "🚆 İZBAN", ferry: "⛴️ Vapur" };
+  function renderTrip(el, t) {
+    const box = document.createElement("div");
+    box.className = "trip";
+    const chips = (t.nearby || []).map(n => "<span>" + esc((SYS[n.system] || n.system) + ": " + n.name +
+      (n.end === "origin" ? " (başlangıca yakın)" : " (varışa yakın)")) + "</span>").join("");
+    box.innerHTML =
+      '<div class="ends"><div><b>A</b>' + esc(t.origin.name) + '</div><div><b>B</b>' + esc(t.destination.name) +
+      (t.straight_km != null ? ' <span class="map-note">· kuş uçuşu ' + esc(fmtKm(t.straight_km)) + "</span>" : "") +
+      "</div></div>" + (chips ? '<div class="chips">' + chips + "</div>" : "") +
+      '<div class="map" role="img" aria-label="Başlangıç ve varış haritası"></div>' +
+      '<a class="go" href="' + esc(t.maps_url) + '" target="_blank" rel="noopener">🚍 Toplu taşıma seçeneklerini karşılaştır</a>' +
+      '<div class="map-note">Google Haritalar seçenekleri sürelerine göre sıralar, en hızlısı en üstte.</div>';
+    el.appendChild(box);
+    const mapEl = box.querySelector(".map");
+    loadLeaflet().then(() => {
+      const map = L.map(mapEl, { scrollWheelZoom: false });
+      L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+        maxZoom: 19, attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+      }).addTo(map);
+      const pin = (p, label, cls) => L.marker([p.lat, p.lon], { icon: L.divIcon({ className: "",
+        html: '<div class="pin ' + cls + '">' + label + "</div>", iconSize: [26, 26], iconAnchor: [13, 13] }), title: p.name })
+        .addTo(map).bindPopup("<b>" + esc(p.name) + "</b>");
+      pin(t.origin, "A", ""); pin(t.destination, "B", "b");
+      map.fitBounds([[t.origin.lat, t.origin.lon], [t.destination.lat, t.destination.lon]],
+        { paddingTopLeft: [56, 36], paddingBottomRight: [32, 36], maxZoom: 15 });
+      scroll.scrollTop = scroll.scrollHeight;
+    }).catch(() => { mapEl.remove(); });
+  }
+
+  // ---- Canlı otobüs haritası: yalnız en son kart canlıdır; 15 sn'de bir /api/live, en fazla 10 dk.
+  const LIVE_EVERY = 15000, LIVE_FOR = 10 * 60 * 1000;
+  let liveTimer = null;
+  const etaText = b => (b.eta != null ? "~" + b.eta + " dk" : "") + (b.stops_left != null ? " · " + b.stops_left + " durak" : "");
+  const busKey = b => (b.bus_id ?? "") + ":" + b.line;
+
+  function renderLive(el, live) {
+    if (liveTimer) { clearInterval(liveTimer); liveTimer = null; document.querySelectorAll(".live .status").forEach(x => {
+      x.classList.add("off"); x.lastChild.textContent = " Canlı takip durdu (yeni bir soru soruldu)."; }); }
+    const box = document.createElement("div");
+    box.className = "live";
+    box.innerHTML = '<div class="map" role="img" aria-label="Otobüslerin canlı konumu"></div>' +
+      '<div class="status"><span class="dot"></span><span> Canlı · 15 saniyede bir güncellenir</span></div><div class="rows"></div>';
+    el.appendChild(box);
+    const mapEl = box.querySelector(".map"), rowsEl = box.querySelector(".rows"), status = box.querySelector(".status");
+    let follow = null, map = null, layer = null, buses = live.buses;
+    const markers = new Map();
+
+    function drawRows() {
+      rowsEl.innerHTML = buses.length ? buses.map(b =>
+        '<div class="bus-row' + (busKey(b) === follow ? " on" : "") + '" data-k="' + esc(busKey(b)) + '">' +
+        '<span class="ln">' + esc(b.line) + '</span><span class="info">' + esc(etaText(b)) + (b.accessible ? " · ♿" : "") +
+        "<small>" + esc(b.name) + "</small></span>" +
+        (b.lat != null ? "<button type=\"button\">" + (busKey(b) === follow ? "Takipte" : "📍 Takip et") + "</button>" : "") +
+        "</div>").join("") : '<div class="map-note">Şu an bu durağa yaklaşan otobüs görünmüyor.</div>';
+      rowsEl.style.display = "grid"; rowsEl.style.gap = "6px";
+    }
+    rowsEl.addEventListener("click", e => {
+      const row = e.target.closest(".bus-row"); if (!row || !e.target.closest("button")) return;
+      follow = follow === row.dataset.k ? null : row.dataset.k;
+      drawRows(); drawBuses(true);
+    });
+
+    function drawBuses(recenter) {
+      if (!map) return;
+      const seen = new Set();
+      buses.forEach(b => {
+        if (b.lat == null) return;
+        const k = busKey(b); seen.add(k);
+        const html = '<div class="bus' + (k === follow ? " on" : "") + '">🚌 ' + esc(b.line) + "</div>";
+        const icon = L.divIcon({ className: "", html, iconSize: null, iconAnchor: [24, 12] });
+        if (markers.has(k)) markers.get(k).setLatLng([b.lat, b.lon]).setIcon(icon);
+        else markers.set(k, L.marker([b.lat, b.lon], { icon, title: b.line, zIndexOffset: 500 }).addTo(layer)
+          .bindPopup("<b>" + esc(b.line) + "</b> " + esc(b.name) + "<br>" + esc(etaText(b))));
+      });
+      for (const [k, m] of markers) if (!seen.has(k)) { layer.removeLayer(m); markers.delete(k); }
+      const f = follow && buses.find(b => busKey(b) === follow && b.lat != null);
+      if (f) map.setView([f.lat, f.lon], Math.max(map.getZoom(), 15), { animate: true });
+      else if (recenter) fitAll();
+    }
+    function fitAll() {
+      const pts = live.stops.filter(s => s.lat != null).map(s => [s.lat, s.lon])
+        .concat(buses.filter(b => b.lat != null).map(b => [b.lat, b.lon]));
+      if (pts.length) map.fitBounds(pts, { paddingTopLeft: [56, 30], paddingBottomRight: [30, 30], maxZoom: 16 });
+    }
+
+    drawRows();
+    loadLeaflet().then(() => {
+      map = L.map(mapEl, { scrollWheelZoom: false });
+      L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+        maxZoom: 19, attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+      }).addTo(map);
+      layer = L.layerGroup().addTo(map);
+      live.stops.forEach(st => { if (st.lat != null) L.marker([st.lat, st.lon], { icon: L.divIcon({ className: "",
+        html: '<div class="stop-pin">🚏</div>', iconSize: [22, 22], iconAnchor: [11, 11] }), title: st.name || st.id })
+        .addTo(map).bindPopup("<b>" + esc(st.name || "Durak") + "</b><br>Durak no: " + esc(st.id)); });
+      drawBuses(true); fitAll();
+      scroll.scrollTop = scroll.scrollHeight;
+    }).catch(() => { mapEl.remove(); });
+
+    const started = Date.now();
+    async function refresh() {
+      if (document.hidden) return;
+      if (Date.now() - started > LIVE_FOR) {
+        clearInterval(liveTimer); liveTimer = null; status.classList.add("off");
+        status.lastChild.textContent = " Canlı takip 10 dakika sonra durdu. Güncel durum için tekrar sor."; return;
+      }
+      try {
+        const res = await fetch("/api/live", { method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ token: live.token }) });
+        if (res.status === 403) {
+          clearInterval(liveTimer); liveTimer = null; status.classList.add("off");
+          status.lastChild.textContent = " Canlı takip süresi doldu. Güncel durum için tekrar sor."; return;
+        }
+        if (!res.ok) throw new Error();
+        buses = (await res.json()).buses || [];
+        drawRows(); drawBuses(false);
+        status.classList.remove("off");
+        status.lastChild.textContent = " Canlı · son güncelleme " + new Date().toLocaleTimeString("tr-TR");
+      } catch { status.classList.add("off"); status.lastChild.textContent = " Güncellenemedi, tekrar denenecek…"; }
+    }
+    if (live.token) liveTimer = setInterval(refresh, LIVE_EVERY);
+  }
+
+  function renderPlaces(el, raw, origin) {
+    const places = raw.map(p => ({ ...p, d: origin ? km(origin, p) : p.distance_km }))
+      .sort((a, b) => (a.d ?? 1e9) - (b.d ?? 1e9));
+    const box = document.createElement("div");
+    box.className = "places";
+    box.innerHTML = places.map((p, i) =>
+      '<div class="place"><div class="top"><span class="num">' + (i + 1) + '</span><span class="name">' + esc(p.name) +
+      '</span><span class="dist">' + esc(fmtKm(p.d)) + "</span></div>" +
+      (p.address ? '<div class="addr">' + esc(p.address) + "</div>" : "") +
+      '<div class="acts">' +
+      (p.phone ? '<a href="tel:' + esc(p.phone.replace(/[^\d+]/g, "")) + '">📞 Ara</a>' : "") +
+      '<a href="' + esc(showUrl(p)) + '" target="_blank" rel="noopener">🗺️ Haritada göster</a>' +
+      '<a href="' + esc(routeUrl(p)) + '" target="_blank" rel="noopener">🧭 Yol tarifi</a>' +
+      "</div></div>").join("") +
+      '<div class="map" role="img" aria-label="Eczanelerin haritası"></div>' +
+      '<div class="map-note">' + (origin ? "Mavi nokta senin konumun. " : "Uzaklıklar ilçe merkezine göre. ") +
+      "Bir noktaya basıp yol tarifi alabilirsin.</div>";
+    el.appendChild(box);
+    const mapEl = box.querySelector(".map");
+    loadLeaflet().then(() => {
+      const map = L.map(mapEl, { scrollWheelZoom: false });
+      L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+        maxZoom: 19, attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+      }).addTo(map);
+      const pts = [];
+      places.forEach((p, i) => {
+        const icon = L.divIcon({ className: "", html: '<div class="pin">' + (i + 1) + "</div>", iconSize: [26, 26], iconAnchor: [13, 13] });
+        L.marker([p.lat, p.lon], { icon, title: p.name }).addTo(map).bindPopup(
+          "<b>" + esc(p.name) + "</b>" + (p.d != null ? "<br>" + esc(fmtKm(p.d)) : "") +
+          '<br><a href="' + esc(routeUrl(p)) + '" target="_blank" rel="noopener">Yol tarifi al →</a>');
+        pts.push([p.lat, p.lon]);
+      });
+      if (origin) {
+        L.marker([origin.lat, origin.lon], { icon: L.divIcon({ className: "", html: '<div class="me"></div>', iconSize: [16, 16], iconAnchor: [8, 8] }),
+          title: "Konumun" }).addTo(map).bindPopup("Buradasın");
+        pts.push([origin.lat, origin.lon]);
+      }
+      map.fitBounds(pts, { paddingTopLeft: [56, 40], paddingBottomRight: [32, 40], maxZoom: 15 });
+      scroll.scrollTop = scroll.scrollHeight;
+    }).catch(() => { mapEl.remove(); });
+  }
+
   const TOOL_NAMES = {
     get_stop_arrivals: "Otobüs varışları", find_pharmacies: "Eczaneler",
     get_air_quality: "Hava kalitesi", get_source_status: "Kaynak durumu", get_announcements: "Duyurular",
+    get_transit_directions: "Yol tarifi", get_weather: "Hava durumu",
   };
   const log = document.getElementById("log"), scroll = document.getElementById("scroll");
   const form = document.getElementById("form"), q = document.getElementById("q"), send = document.getElementById("send");
@@ -131,13 +406,16 @@
     try {
       const res = await fetch("/api/chat", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ messages: history.slice(-12) }),
+        body: JSON.stringify({ messages: history.slice(-12), ...(userLoc ? { location: userLoc } : {}) }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || "Bir sorun oluştu, tekrar dener misin?");
       history.push({ role: "assistant", content: data.answer });
       const tools = [...new Set(data.tools || [])].map(t => "<span>" + esc(TOOL_NAMES[t] || t) + "</span>").join("");
       wait.innerHTML = fmt(data.answer) + (tools ? '<div class="tools">' + tools + "</div>" : "");
+      if (Array.isArray(data.places) && data.places.length) renderPlaces(wait, data.places, userLoc);
+      if (data.trip && data.trip.origin && data.trip.destination) renderTrip(wait, data.trip);
+      if (data.live && Array.isArray(data.live.stops) && data.live.stops.length) renderLive(wait, data.live);
     } catch (e) {
       history.pop();
       wait.classList.add("error");
