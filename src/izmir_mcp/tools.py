@@ -704,6 +704,10 @@ async def get_weather(district: str | None = None, lat: float | None = None, lon
     except SourceFailure as f:
         aq_task.cancel()
         return WeatherResult(place=place, day=day_n, meta=meta, error=f.error)
+    wx_source = data.get("_source") or weather.SOURCE
+    if wx_source != weather.SOURCE:
+        meta.sources[0] = wx_source
+        meta.notes.append(f"Open-Meteo şu an cevap vermediği için hava durumu {wx_source} (yr.no) verisinden alındı.")
     try:
         aq, _, _ = await aq_task
     except SourceFailure:
@@ -752,7 +756,8 @@ async def get_weather(district: str | None = None, lat: float | None = None, lon
         periods.append(p)
     if not periods:
         meta.notes.append("Bugünün sabah/öğle/akşam saatleri geçti; yarın için day='yarın' ile sor.")
-    meta.notes.append("Hava durumu ve hava kalitesi Open-Meteo model tahminidir; giyim önerileri kurala dayalıdır.")
+    meta.notes.append(f"Hava durumu {wx_source}, hava kalitesi Open-Meteo model tahminidir; "
+                      "giyim önerileri kurala dayalıdır.")
     meta.cached, meta.stale = cached, stale
     return WeatherResult(place=place, lat=ref_lat, lon=ref_lon, day=day_n, date=target.isoformat(), now=now,
                          periods=periods, meta=meta)

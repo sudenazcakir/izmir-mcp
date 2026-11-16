@@ -98,3 +98,49 @@ def test_clothing_rules():
     assert any("güneş kremi" in c for c in tools.clothing_for(hot))
     smog = DayPeriod(name="sabah", hours="07-11", feels_like_min_c=18, european_aqi_max=75)
     assert any("maske" in c for c in tools.clothing_for(smog))
+
+
+MET = "/weatherapi/locationforecast/2.0/complete"
+
+
+def met_json():
+    series = []
+    for h in range(48):  # UTC; İstanbul = UTC+3
+        local_h = (h + 3) % 24
+        rainy = 18 <= h + 3 <= 21
+        series.append({"time": f"2026-11-{15 + h // 24:02d}T{h % 24:02d}:00:00Z", "data": {
+            "instant": {"details": {"air_temperature": 16 if 12 <= local_h <= 16 else 10, "wind_speed": 5.0,
+                                    "relative_humidity": 60, "ultraviolet_index_clear_sky": 3}},
+            "next_1_hours": {"summary": {"symbol_code": "rainshowers_night" if rainy else "partlycloudy_day"},
+                             "details": {"precipitation_amount": 1.2 if rainy else 0,
+                                         "probability_of_precipitation": 70 if rainy else 5}},
+        }})
+    series.append({"time": "2026-11-17T00:00:00Z", "data": {"instant": {"details": {"air_temperature": 5}},
+                                                             "next_6_hours": {}}})  # 6 saatlik: atlanır
+    return {"properties": {"timeseries": series}}
+
+
+async def test_open_meteo_429_falls_back_to_met_norway(wx):
+    wx.routes[FORECAST] = (429, {"error": True, "reason": "Daily API request limit exceeded"})
+    wx.routes[MET] = (200, met_json())
+    r = await tools.get_weather("Bornova")
+    assert r.error is None and [p.name for p in r.periods] == ["sabah", "öğle", "akşam"]
+    sabah, ogle, aksam = r.periods
+    assert ogle.temp_max_c == 16 and r.now.description == "parçalı bulutlu"
+    assert sabah.feels_like_min_c < 10  # rüzgâr soğuğu hesaplandı
+    assert aksam.description == "sağanak" and aksam.rain_chance_pct == 70
+    assert any("şemsiye" in c for c in aksam.clothing)
+    assert r.meta.sources[0] == "MET Norway" and any("yr.no" in n for n in r.meta.notes)
+
+
+async def test_both_weather_sources_down_reports_open_meteo_error(wx):
+    wx.routes[FORECAST] = (429, {"error": True})
+    wx.routes[MET] = httpx.ConnectError("down")
+    r = await tools.get_weather("Bornova")
+    assert r.error is not None and r.error.code == "source_unavailable" and "429" in r.error.message
+
+
+def test_met_symbols():
+    from izmir_mcp.sources import weather
+    assert weather.met_code("lightrainandthunder") == 95 and weather.met_code("clearsky_night") == 0
+    assert weather.met_code("nonsense") is None and weather.met_code(None) is None
