@@ -10,6 +10,7 @@ class Settings(BaseSettings):
     eshot_api_base: str = "https://acikveriwapi.izmir.bel.tr"
     open_meteo_air_base: str = "https://air-quality-api.open-meteo.com"
     open_meteo_forecast_base: str = "https://api.open-meteo.com"
+    met_no_base: str = "https://api.met.no"  # Open-Meteo sınıra takılırsa yedek hava kaynağı
     eshot_announcements_csv_url: str = "https://openfiles.izmir.bel.tr/211488/docs/eshot-otobus-hat-duyurulari.csv"
     http_timeout_seconds: float = 8.0
     http_retries: int = 3
