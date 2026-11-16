@@ -16,6 +16,7 @@ from izmir_mcp.web import (
     create_app,
     extract_places,
     extract_trip,
+    extract_weather,
     live_payload,
     parse_location,
 )
@@ -93,7 +94,7 @@ def test_chat_sends_mcp_connector_and_returns_answer():
         r = tc.post("/api/chat", json={"messages": [{"role": "user", "content": "Buca'da nöbetçi eczane?"}]})
     assert r.status_code == 200
     assert r.json() == {"answer": "Buca'da nöbetçi: **Ecza A**.", "tools": ["find_pharmacies"], "places": [],
-                        "trip": None, "live": None}
+                        "trip": None, "live": None, "weather": None}
     call = msgs.calls[0]
     assert call["model"] == "claude-haiku-5-5"
     assert call["betas"] == [MCP_BETA]
@@ -317,6 +318,13 @@ def test_chat_returns_trip_card():
     assert trip["origin"]["name"] == "Bornova" and trip["destination"]["name"] == "Konak"
     assert trip["maps_url"].endswith("travelmode=transit")
     assert trip["nearby"] == [{"system": "metro", "name": "Bornova", "end": "origin"}]
+
+
+def test_extract_weather_offers_district_but_never_the_users_location():
+    assert extract_weather(json.dumps({"place": "Karşıyaka", "day": "yarın", "periods": []})) == {"place": "Karşıyaka"}
+    assert extract_weather(json.dumps({"place": "Konumun", "lat": 38.4, "lon": 27.1})) is None
+    assert extract_weather(json.dumps({"place": "Bornova", "error": {"code": "source_unavailable"}})) is None
+    assert extract_weather("nope") is None
 
 
 def test_extract_trip_rejects_bad_results():

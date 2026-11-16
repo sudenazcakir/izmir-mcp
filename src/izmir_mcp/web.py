@@ -52,6 +52,7 @@ MAX_PLACES = 10  # sayfaya haritada gösterilmek üzere giden en fazla eczane
 PLACE_TOOLS = {"find_pharmacies"}
 TRIP_TOOL = "get_transit_directions"
 LIVE_TOOL = "get_stop_arrivals"
+WEATHER_TOOL = "get_weather"
 MAX_LIVE_STOPS = 10
 MAX_LIVE_BUSES = 12
 LIVE_RATE_LIMIT = 60  # canlı harita yenilemesi (15 sn'de bir, 10 dk) için IP başına 10 dakikada
@@ -392,6 +393,20 @@ def extract_live(text: str) -> dict[str, Any] | None:
         return None
 
 
+def extract_weather(text: str) -> dict[str, Any] | None:
+    """get_weather sonucundan favoriye eklenebilecek yer adı. Kullanıcının kendi konumu (\"Konumun\") verilmez."""
+    try:
+        data = json.loads(text)
+    except ValueError:
+        return None
+    if not isinstance(data, dict) or data.get("error"):
+        return None
+    place = data.get("place")
+    if not isinstance(place, str) or not place.strip() or place == "Konumun":
+        return None
+    return {"place": place.strip()[:60]}
+
+
 def extract_places(text: str) -> list[dict[str, Any]]:
     """find_pharmacies sonucundaki (JSON) konumu bilinen eczaneleri harita için sadeleştirir."""
     try:
@@ -435,6 +450,7 @@ async def ask_claude(
     places: list[dict[str, Any]] = []
     trip: dict[str, Any] | None = None
     live: dict[str, Any] | None = None
+    weather: dict[str, Any] | None = None
     system = SYSTEM_PROMPT
     if location:
         system += "\n\n" + LOCATION_NOTE.format(lat=location[0], lon=location[1])
@@ -465,15 +481,17 @@ async def ask_claude(
                     trip = extract_trip(_result_text(block.content)) or trip
                 elif name == LIVE_TOOL:
                     live = extract_live(_result_text(block.content)) or live
+                elif name == WEATHER_TOOL:
+                    weather = extract_weather(_result_text(block.content)) or weather
         if resp.stop_reason == "refusal":
             return {"answer": "Bu soruya cevap veremiyorum. Başka bir şekilde sormayı dener misin?", "tools": tools_used,
-                    "places": [], "trip": None, "live": None}
+                    "places": [], "trip": None, "live": None, "weather": None}
         if resp.stop_reason != "pause_turn":
             break
         # Uzun araç zinciri yarıda durdu: cevabı olduğu gibi geri verip devam ettir.
         messages = [*messages, {"role": "assistant", "content": resp.content}]
     answer = "\n\n".join(texts).strip() or "Şu an bir cevap üretemedim, lütfen tekrar dener misin?"
-    return {"answer": answer, "tools": tools_used, "places": places, "trip": trip, "live": live}
+    return {"answer": answer, "tools": tools_used, "places": places, "trip": trip, "live": live, "weather": weather}
 
 
 def create_app(settings: Settings | None = None, client: anthropic.AsyncAnthropic | None = None) -> ASGIApp:
