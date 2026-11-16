@@ -29,7 +29,9 @@ from starlette.requests import Request
 from starlette.responses import HTMLResponse, JSONResponse, Response
 from starlette.types import ASGIApp, Receive, Scope, Send
 
+from . import tools
 from .config import Settings, get_settings
+from .models import StopRef
 from .server import mcp
 
 log = logging.getLogger(__name__)
@@ -46,6 +48,11 @@ RATE_WINDOW_SECONDS = 600
 MAX_PLACES = 10  # sayfaya haritada gösterilmek üzere giden en fazla eczane
 PLACE_TOOLS = {"find_pharmacies"}
 TRIP_TOOL = "get_transit_directions"
+LIVE_TOOL = "get_stop_arrivals"
+MAX_LIVE_STOPS = 10
+MAX_LIVE_BUSES = 12
+LIVE_CACHE_SECONDS = 10  # aynı duraklar için ESHOT'a 10 sn'de bir gidilir, kaç kişi izlerse izlesin
+LIVE_RATE_LIMIT = 120  # canlı harita yenilemesi (15 sn'de bir) için IP başına 10 dakikada
 # İzmir ili ve çevresi; bunun dışındaki konumlar yok sayılır (yanlış/sahte koordinata karşı).
 IZMIR_BBOX = (37.6, 39.6, 25.8, 28.7)  # min_lat, max_lat, min_lon, max_lon
 
@@ -72,6 +79,10 @@ hızlı olması muhtemel seçeneği, sonra alternatifleri kısaca yaz; kesin sü
 sürelerini karşılaştırıp en hızlıyı üstte gösteren toplu taşıma tarifi düğmesini ayrıca gösteriyor; bağlantıyı yazma, \
 "aşağıdaki düğmeden süreleri karşılaştırabilirsin" de. Başlangıç bir durağa yakınsa get_stop_arrivals ile oraya \
 yaklaşan otobüslere de bakabilirsin.
+- Durağa yaklaşan otobüsleri (get_stop_arrivals) verdiğinde sayfa otobüsleri canlı haritada gösterip 15 saniyede bir \
+günceller. "Otobüsüm nerede?" gibi sorularda durağı sor ya da konuma göre bul; cevabın sonunda haritadan canlı \
+takip edebileceğini kısaca söyle. Konum paylaşıldıysa ve durak söylenmediyse durak yerine en yakın ilçe/semt adını \
+kullanabilirsin.
 - Kullanıcı "yakınımdaki", "bana en yakın" gibi konuma bağlı soruyor ama konum paylaşılmadıysa, sayfanın altındaki \
 "Konumumu kullan" düğmesine basmasını ya da ilçe/semt adını yazmasını iste."""
 
@@ -236,6 +247,63 @@ def extract_trip(text: str) -> dict[str, Any] | None:
             "straight_km": km if isinstance(km, int | float) and not isinstance(km, bool) else None}
 
 
+def _num(v: Any) -> float | int | None:
+    return v if isinstance(v, int | float) and not isinstance(v, bool) and math.isfinite(v) else None
+
+
+def clean_stops(raw: Any) -> list[dict[str, Any]]:
+    """Durak listesi: id rakam olmalı; konum İzmir içindeyse tutulur."""
+    out: list[dict[str, Any]] = []
+    for st in raw if isinstance(raw, list) else []:
+        if not isinstance(st, dict):
+            continue
+        sid = str(st.get("id", ""))
+        if not (sid.isdigit() and len(sid) <= 10):
+            continue
+        loc = parse_location({"lat": st.get("lat"), "lon": st.get("lon")})
+        name = st.get("name") if isinstance(st.get("name"), str) else None
+        out.append({"id": sid, "name": name[:80] if name else None,
+                    "lat": loc[0] if loc else None, "lon": loc[1] if loc else None})
+        if len(out) >= MAX_LIVE_STOPS:
+            break
+    return out
+
+
+def live_payload(data: Any) -> dict[str, Any] | None:
+    """get_stop_arrivals sonucunu (dict) canlı harita kartına çevirir."""
+    if not isinstance(data, dict) or data.get("error"):
+        return None
+    stops = clean_stops(data.get("stops"))
+    if not stops:
+        return None
+    buses = []
+    for a in data.get("arrivals") or []:
+        if not isinstance(a, dict) or not isinstance(a.get("line_number"), str):
+            continue
+        loc = parse_location({"lat": a.get("bus_lat"), "lon": a.get("bus_lon")})
+        buses.append({
+            "line": a["line_number"][:10],
+            "name": str(a.get("line_name") or "")[:80],
+            "bus_id": _num(a.get("bus_id")),
+            "stop_id": str(a.get("stop_id") or "")[:10],
+            "eta": _num(a.get("eta_minutes")),
+            "stops_left": _num(a.get("stops_remaining")),
+            "lat": loc[0] if loc else None,
+            "lon": loc[1] if loc else None,
+            "accessible": a.get("wheelchair_accessible") is True,
+        })
+        if len(buses) >= MAX_LIVE_BUSES:
+            break
+    return {"stops": stops, "buses": buses}
+
+
+def extract_live(text: str) -> dict[str, Any] | None:
+    try:
+        return live_payload(json.loads(text))
+    except ValueError:
+        return None
+
+
 def extract_places(text: str) -> list[dict[str, Any]]:
     """find_pharmacies sonucundaki (JSON) konumu bilinen eczaneleri harita için sadeleştirir."""
     try:
@@ -278,6 +346,7 @@ async def ask_claude(
     tool_names: dict[str, str] = {}
     places: list[dict[str, Any]] = []
     trip: dict[str, Any] | None = None
+    live: dict[str, Any] | None = None
     system = SYSTEM_PROMPT
     if location:
         system += "\n\n" + LOCATION_NOTE.format(lat=location[0], lon=location[1])
@@ -306,15 +375,17 @@ async def ask_claude(
                         places = found  # birden çok arama olduysa sonuncusu (cevabın anlattığı) gösterilir
                 elif name == TRIP_TOOL:
                     trip = extract_trip(_result_text(block.content)) or trip
+                elif name == LIVE_TOOL:
+                    live = extract_live(_result_text(block.content)) or live
         if resp.stop_reason == "refusal":
             return {"answer": "Bu soruya cevap veremiyorum. Başka bir şekilde sormayı dener misin?", "tools": tools_used,
-                    "places": [], "trip": None}
+                    "places": [], "trip": None, "live": None}
         if resp.stop_reason != "pause_turn":
             break
         # Uzun araç zinciri yarıda durdu: cevabı olduğu gibi geri verip devam ettir.
         messages = [*messages, {"role": "assistant", "content": resp.content}]
     answer = "\n\n".join(texts).strip() or "Şu an bir cevap üretemedim, lütfen tekrar dener misin?"
-    return {"answer": answer, "tools": tools_used, "places": places, "trip": trip}
+    return {"answer": answer, "tools": tools_used, "places": places, "trip": trip, "live": live}
 
 
 def create_app(settings: Settings | None = None, client: anthropic.AsyncAnthropic | None = None) -> ASGIApp:
@@ -322,6 +393,8 @@ def create_app(settings: Settings | None = None, client: anthropic.AsyncAnthropi
     if client is None and settings.anthropic_api_key:
         client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key, max_retries=2, timeout=60)
     limiter = RateLimiter(settings.chat_rate_limit, settings.chat_global_rate_limit)
+    live_limiter = RateLimiter(LIVE_RATE_LIMIT, LIVE_RATE_LIMIT * 50)
+    live_cache: dict[tuple[str, ...], tuple[float, dict[str, Any]]] = {}
     public = bool(settings.public_base_url or settings.render_external_url)
     if public and not settings.mcp_api_key:
         log.error("MCP_API_KEY ayarlı değil: herkese açık ortamda /mcp kapalı (503). Render'da MCP_API_KEY gir.")
@@ -362,11 +435,42 @@ def create_app(settings: Settings | None = None, client: anthropic.AsyncAnthropi
             log.exception("Sohbet isteğinde beklenmeyen hata")
             return JSONResponse({"error": "Beklenmeyen bir sorun oluştu, tekrar dener misin?"}, status_code=500)
 
+    async def live(request: Request) -> Response:
+        """Canlı harita yenilemesi: Claude'a gitmez, doğrudan ESHOT'tan (10 sn önbellekli) okur."""
+        if not live_limiter.allow(client_ip(request)):
+            return JSONResponse({"error": "Çok sık yenilendi, biraz bekle."}, status_code=429)
+        try:
+            body = await request.json()
+        except ValueError:
+            body = None
+        stops = clean_stops(body.get("stops") if isinstance(body, dict) else None)
+        if not stops:
+            return JSONResponse({"error": "Durak bilgisi eksik."}, status_code=400)
+        key = tuple(sorted(st["id"] for st in stops))
+        now = time.monotonic()
+        hit = live_cache.get(key)
+        if hit and now - hit[0] < LIVE_CACHE_SECONDS:
+            return JSONResponse(hit[1])
+        refs = [StopRef(**st) for st in stops]
+        try:
+            result = await tools.arrivals_for_stops("canlı harita", refs, [], MAX_LIVE_BUSES)
+        except Exception:
+            log.exception("Canlı harita isteğinde beklenmeyen hata")
+            return JSONResponse({"error": "Otobüs konumları alınamadı."}, status_code=502)
+        payload = live_payload(result.model_dump(mode="json"))
+        if payload is None:
+            return JSONResponse({"error": "ESHOT şu an cevap vermiyor."}, status_code=502)
+        if len(live_cache) > 500:
+            live_cache.clear()
+        live_cache[key] = (now, payload)
+        return JSONResponse(payload)
+
     # MCP uygulaması kendi lifespan'ını (oturum yöneticisi) taşıyor; sayfa ve API yollarını ona ekliyoruz.
     app: Starlette = mcp.streamable_http_app(stateless_http=True, host="0.0.0.0")
     app.add_route("/", index, methods=["GET"])
     app.add_route("/health", health, methods=["GET", "HEAD"])
     app.add_route("/api/chat", chat, methods=["POST"])
+    app.add_route("/api/live", live, methods=["POST"])
     return McpKeyMiddleware(app, settings.mcp_api_key, public=public)
 
 

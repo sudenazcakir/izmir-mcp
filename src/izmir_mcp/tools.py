@@ -121,6 +121,13 @@ async def get_stop_arrivals(stop: str, limit: int = 8) -> StopArrivals:
             hint="Durak numarası (ör. 40010) ya da metro/İZBAN istasyonu, iskele veya ilçe adı içeren bir ad deneyin.",
         ))
 
+    return await arrivals_for_stops(stop, stops, notes, limit, started)
+
+
+async def arrivals_for_stops(query: str, stops: list[StopRef], notes: list[str], limit: int,
+                             started: datetime | None = None) -> StopArrivals:
+    """Bilinen duraklar için ESHOT'tan yaklaşan otobüsler. Canlı harita (web /api/live) bunu doğrudan çağırır."""
+    started = started or _now()
     sem = asyncio.Semaphore(5)
 
     async def fetch(ref: StopRef):
@@ -175,7 +182,7 @@ async def get_stop_arrivals(stop: str, limit: int = 8) -> StopArrivals:
     elif failures:
         notes.append(f"{len(failures)} peron için ESHOT cevap vermedi; sonuçlar eksik olabilir.")
     return StopArrivals(
-        query=stop, stops=stops, arrivals=arrivals, error=error,
+        query=query, stops=stops, arrivals=arrivals, error=error,
         meta=Meta(sources=[eshot.SOURCE], fetched_at=_now(), notes=notes),
     )
 

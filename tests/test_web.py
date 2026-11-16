@@ -15,6 +15,7 @@ from izmir_mcp.web import (
     create_app,
     extract_places,
     extract_trip,
+    live_payload,
     parse_location,
 )
 
@@ -91,7 +92,7 @@ def test_chat_sends_mcp_connector_and_returns_answer():
         r = tc.post("/api/chat", json={"messages": [{"role": "user", "content": "Buca'da nöbetçi eczane?"}]})
     assert r.status_code == 200
     assert r.json() == {"answer": "Buca'da nöbetçi: **Ecza A**.", "tools": ["find_pharmacies"], "places": [],
-                        "trip": None}
+                        "trip": None, "live": None}
     call = msgs.calls[0]
     assert call["model"] == "claude-haiku-5-5"
     assert call["betas"] == [MCP_BETA]
@@ -322,3 +323,58 @@ def test_extract_trip_rejects_bad_results():
     assert extract_trip(json.dumps({**TRIP, "error": {"code": "not_found"}})) is None
     assert extract_trip(json.dumps({**TRIP, "maps_url": "javascript:alert(1)"})) is None
     assert extract_trip(json.dumps({**TRIP, "origin": None})) is None
+
+
+ARRIVALS = {
+    "query": "Bornova Metro",
+    "stops": [{"id": "30005", "name": "Bornova Metro", "lat": 38.4577, "lon": 27.2125},
+              {"id": "evil<script>", "name": "x", "lat": 38.4, "lon": 27.2}],
+    "arrivals": [
+        {"stop_id": "30005", "line_number": "505", "line_name": "Çamkule - Bornova Metro", "bus_id": 1234,
+         "stops_remaining": 2, "eta_minutes": 2, "eta_method": "blend", "bus_lat": 38.455, "bus_lon": 27.205,
+         "wheelchair_accessible": True},
+        {"stop_id": "30005", "line_number": "268", "line_name": "Doğanlar", "bus_id": 99,
+         "stops_remaining": 4, "eta_minutes": 3, "eta_method": "stops", "bus_lat": None, "bus_lon": None},
+    ],
+    "meta": {"sources": [], "fetched_at": "2026-11-16T16:00:00Z"},
+    "error": None,
+}
+
+
+def test_chat_returns_live_bus_card():
+    client, _ = fake_client(reply(tool_use("get_stop_arrivals"), tool_result(ARRIVALS), text("505 2 dk.")))
+    with TestClient(create_app(settings(), client)) as tc:
+        r = tc.post("/api/chat", json={"messages": [{"role": "user", "content": "Bornova Metro otobüs"}]})
+    live = r.json()["live"]
+    assert live["stops"] == [{"id": "30005", "name": "Bornova Metro", "lat": 38.4577, "lon": 27.2125}]
+    assert live["buses"][0] == {"line": "505", "name": "Çamkule - Bornova Metro", "bus_id": 1234, "stop_id": "30005",
+                                "eta": 2, "stops_left": 2, "lat": 38.455, "lon": 27.205, "accessible": True}
+    assert live["buses"][1]["lat"] is None
+
+
+def test_live_payload_rejects_errors():
+    assert live_payload({**ARRIVALS, "error": {"code": "timeout"}}) is None
+    assert live_payload({**ARRIVALS, "stops": []}) is None
+
+
+def test_live_endpoint_refreshes_from_eshot_and_caches(monkeypatch):
+    from izmir_mcp import tools as tools_mod
+    from izmir_mcp.models import StopArrivals
+
+    calls = []
+
+    async def fake_arrivals(query, stops, notes, limit, started=None):
+        calls.append([s.id for s in stops])
+        return StopArrivals.model_validate({**ARRIVALS, "stops": [s.model_dump() for s in stops]})
+
+    monkeypatch.setattr(tools_mod, "arrivals_for_stops", fake_arrivals)
+    client, msgs = fake_client()
+    body = {"stops": [{"id": "30005", "name": "Bornova Metro", "lat": 38.4577, "lon": 27.2125}]}
+    with TestClient(create_app(settings(), client)) as tc:
+        r1 = tc.post("/api/live", json=body)
+        r2 = tc.post("/api/live", json=body)
+        bad = tc.post("/api/live", json={"stops": [{"id": "../etc"}]})
+    assert r1.status_code == 200 and r1.json()["buses"][0]["line"] == "505"
+    assert r2.json() == r1.json() and calls == [["30005"]]  # ikinci istek önbellekten
+    assert bad.status_code == 400
+    assert msgs.calls == []  # canlı yenileme Claude'a gitmez

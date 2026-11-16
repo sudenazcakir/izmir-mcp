@@ -103,6 +103,26 @@
     padding: 10px 14px; background: var(--accent); color: var(--accent-ink); }
   .trip .map { height: 200px; }
   .pin.b { background: #c2410c; }
+  .live { white-space: normal; margin-top: 12px; display: grid; gap: 8px; }
+  .live .map { height: 260px; }
+  .live .status { font-size: 12.5px; color: var(--muted); display: flex; align-items: center; gap: 6px; }
+  .live .dot { width: 8px; height: 8px; border-radius: 50%; background: #16a34a; animation: blink 2s infinite; }
+  .live .status.off .dot { background: var(--muted); animation: none; }
+  .bus-row { display: flex; align-items: center; gap: 10px; border: 1px solid var(--line); border-radius: 12px;
+    padding: 8px 10px; background: var(--bg); font-size: 14px; }
+  .bus-row .ln { flex: none; min-width: 42px; text-align: center; font-weight: 700; border-radius: 8px;
+    padding: 2px 6px; background: #f59e0b; color: #1f1300; }
+  .bus-row .info { flex: 1; min-width: 0; }
+  .bus-row .info small { display: block; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .bus-row button { font: inherit; font-size: 13px; cursor: pointer; color: var(--accent); background: var(--surface);
+    border: 1px solid var(--line); border-radius: 999px; padding: 3px 10px; white-space: nowrap; }
+  .bus-row.on { border-color: var(--accent); }
+  .bus-row.on button { background: var(--accent); color: var(--accent-ink); }
+  .bus { padding: 2px 6px; border-radius: 8px; background: #f59e0b; color: #1f1300; border: 2px solid #fff;
+    box-shadow: 0 1px 4px rgba(0,0,0,.45); font: 700 12px/16px system-ui, sans-serif; white-space: nowrap; }
+  .bus.on { background: #dc2626; color: #fff; transform: scale(1.2); }
+  .stop-pin { width: 22px; height: 22px; border-radius: 6px; background: #0a6a86; border: 2px solid #fff;
+    box-shadow: 0 1px 4px rgba(0,0,0,.4); font-size: 12px; line-height: 18px; text-align: center; }
 </style>
 </head>
 <body>
@@ -118,6 +138,7 @@
       <h2>Merhaba, ne öğrenmek istersin?</h2>
       <div class="examples">
         <button type="button">Bornova Metro durağına sıradaki otobüs ne zaman?</button>
+        <button type="button">Otobüsüm nerede? Bornova Metro'ya gelenleri haritada göster</button>
         <button type="button">Buca'da bugün nöbetçi eczane hangisi?</button>
         <button type="button">Bana en yakın nöbetçi eczane hangisi?</button>
         <button type="button">Bornova'da hava kalitesi nasıl, akşam dışarı çıkılır mı?</button>
@@ -130,7 +151,7 @@
 <form id="form">
   <div class="loc-row">
     <button class="loc-btn" id="loc" type="button" aria-pressed="false">📍 Konumumu kullan</button>
-    <span id="locmsg">En yakın eczaneleri sana göre sıralamak için</span>
+    <span id="locmsg">Yakındaki eczane, durak ve yol tarifi için</span>
   </div>
   <div class="bar">
     <textarea id="q" rows="1" maxlength="1000" placeholder="Sorunu yaz…" aria-label="Soru"></textarea>
@@ -215,6 +236,96 @@
     }).catch(() => { mapEl.remove(); });
   }
 
+  // ---- Canlı otobüs haritası: yalnız en son kart canlıdır; 15 sn'de bir /api/live, en fazla 10 dk.
+  const LIVE_EVERY = 15000, LIVE_FOR = 10 * 60 * 1000;
+  let liveTimer = null;
+  const etaText = b => (b.eta != null ? "~" + b.eta + " dk" : "") + (b.stops_left != null ? " · " + b.stops_left + " durak" : "");
+  const busKey = b => (b.bus_id ?? "") + ":" + b.line;
+
+  function renderLive(el, live) {
+    if (liveTimer) { clearInterval(liveTimer); liveTimer = null; document.querySelectorAll(".live .status").forEach(x => {
+      x.classList.add("off"); x.lastChild.textContent = " Canlı takip durdu (yeni bir soru soruldu)."; }); }
+    const box = document.createElement("div");
+    box.className = "live";
+    box.innerHTML = '<div class="map" role="img" aria-label="Otobüslerin canlı konumu"></div>' +
+      '<div class="status"><span class="dot"></span><span> Canlı · 15 saniyede bir güncellenir</span></div><div class="rows"></div>';
+    el.appendChild(box);
+    const mapEl = box.querySelector(".map"), rowsEl = box.querySelector(".rows"), status = box.querySelector(".status");
+    let follow = null, map = null, layer = null, buses = live.buses;
+    const markers = new Map();
+
+    function drawRows() {
+      rowsEl.innerHTML = buses.length ? buses.map(b =>
+        '<div class="bus-row' + (busKey(b) === follow ? " on" : "") + '" data-k="' + esc(busKey(b)) + '">' +
+        '<span class="ln">' + esc(b.line) + '</span><span class="info">' + esc(etaText(b)) + (b.accessible ? " · ♿" : "") +
+        "<small>" + esc(b.name) + "</small></span>" +
+        (b.lat != null ? "<button type=\"button\">" + (busKey(b) === follow ? "Takipte" : "📍 Takip et") + "</button>" : "") +
+        "</div>").join("") : '<div class="map-note">Şu an bu durağa yaklaşan otobüs görünmüyor.</div>';
+      rowsEl.style.display = "grid"; rowsEl.style.gap = "6px";
+    }
+    rowsEl.addEventListener("click", e => {
+      const row = e.target.closest(".bus-row"); if (!row || !e.target.closest("button")) return;
+      follow = follow === row.dataset.k ? null : row.dataset.k;
+      drawRows(); drawBuses(true);
+    });
+
+    function drawBuses(recenter) {
+      if (!map) return;
+      const seen = new Set();
+      buses.forEach(b => {
+        if (b.lat == null) return;
+        const k = busKey(b); seen.add(k);
+        const html = '<div class="bus' + (k === follow ? " on" : "") + '">🚌 ' + esc(b.line) + "</div>";
+        const icon = L.divIcon({ className: "", html, iconSize: null, iconAnchor: [24, 12] });
+        if (markers.has(k)) markers.get(k).setLatLng([b.lat, b.lon]).setIcon(icon);
+        else markers.set(k, L.marker([b.lat, b.lon], { icon, title: b.line, zIndexOffset: 500 }).addTo(layer)
+          .bindPopup("<b>" + esc(b.line) + "</b> " + esc(b.name) + "<br>" + esc(etaText(b))));
+      });
+      for (const [k, m] of markers) if (!seen.has(k)) { layer.removeLayer(m); markers.delete(k); }
+      const f = follow && buses.find(b => busKey(b) === follow && b.lat != null);
+      if (f) map.setView([f.lat, f.lon], Math.max(map.getZoom(), 15), { animate: true });
+      else if (recenter) fitAll();
+    }
+    function fitAll() {
+      const pts = live.stops.filter(s => s.lat != null).map(s => [s.lat, s.lon])
+        .concat(buses.filter(b => b.lat != null).map(b => [b.lat, b.lon]));
+      if (pts.length) map.fitBounds(pts, { paddingTopLeft: [56, 30], paddingBottomRight: [30, 30], maxZoom: 16 });
+    }
+
+    drawRows();
+    loadLeaflet().then(() => {
+      map = L.map(mapEl, { scrollWheelZoom: false });
+      L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+        maxZoom: 19, attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+      }).addTo(map);
+      layer = L.layerGroup().addTo(map);
+      live.stops.forEach(st => { if (st.lat != null) L.marker([st.lat, st.lon], { icon: L.divIcon({ className: "",
+        html: '<div class="stop-pin">🚏</div>', iconSize: [22, 22], iconAnchor: [11, 11] }), title: st.name || st.id })
+        .addTo(map).bindPopup("<b>" + esc(st.name || "Durak") + "</b><br>Durak no: " + esc(st.id)); });
+      drawBuses(true); fitAll();
+      scroll.scrollTop = scroll.scrollHeight;
+    }).catch(() => { mapEl.remove(); });
+
+    const started = Date.now();
+    async function refresh() {
+      if (document.hidden) return;
+      if (Date.now() - started > LIVE_FOR) {
+        clearInterval(liveTimer); liveTimer = null; status.classList.add("off");
+        status.lastChild.textContent = " Canlı takip 10 dakika sonra durdu. Güncel durum için tekrar sor."; return;
+      }
+      try {
+        const res = await fetch("/api/live", { method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ stops: live.stops }) });
+        if (!res.ok) throw new Error();
+        buses = (await res.json()).buses || [];
+        drawRows(); drawBuses(false);
+        status.classList.remove("off");
+        status.lastChild.textContent = " Canlı · son güncelleme " + new Date().toLocaleTimeString("tr-TR");
+      } catch { status.classList.add("off"); status.lastChild.textContent = " Güncellenemedi, tekrar denenecek…"; }
+    }
+    liveTimer = setInterval(refresh, LIVE_EVERY);
+  }
+
   function renderPlaces(el, raw, origin) {
     const places = raw.map(p => ({ ...p, d: origin ? km(origin, p) : p.distance_km }))
       .sort((a, b) => (a.d ?? 1e9) - (b.d ?? 1e9));
@@ -260,7 +371,7 @@
   const TOOL_NAMES = {
     get_stop_arrivals: "Otobüs varışları", find_pharmacies: "Eczaneler",
     get_air_quality: "Hava kalitesi", get_source_status: "Kaynak durumu", get_announcements: "Duyurular",
-    get_transit_directions: "Yol tarifi",
+    get_transit_directions: "Yol tarifi", get_weather: "Hava durumu",
   };
   const log = document.getElementById("log"), scroll = document.getElementById("scroll");
   const form = document.getElementById("form"), q = document.getElementById("q"), send = document.getElementById("send");
@@ -299,6 +410,7 @@
       wait.innerHTML = fmt(data.answer) + (tools ? '<div class="tools">' + tools + "</div>" : "");
       if (Array.isArray(data.places) && data.places.length) renderPlaces(wait, data.places, userLoc);
       if (data.trip && data.trip.origin && data.trip.destination) renderTrip(wait, data.trip);
+      if (data.live && Array.isArray(data.live.stops) && data.live.stops.length) renderLive(wait, data.live);
     } catch (e) {
       history.pop();
       wait.classList.add("error");
