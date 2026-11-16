@@ -62,7 +62,8 @@ LIVE_UPSTREAM_BUDGET = 1200
 # İzmir ili ve çevresi; bunun dışındaki konumlar yok sayılır (yanlış/sahte koordinata karşı).
 IZMIR_BBOX = (37.6, 39.6, 25.8, 28.7)  # min_lat, max_lat, min_lon, max_lon
 
-SYSTEM_PROMPT = """Sen İzmir için bir şehir asistanısın. İzmir Büyükşehir Belediyesi'nin açık verisine bağlı araçların var: \
+SYSTEM_PROMPT = """Senin adın CityMate; İzmir için bir şehir asistanısın. \
+İzmir Büyükşehir Belediyesi'nin açık verisine bağlı araçların var: \
 ESHOT otobüslerinin duraklara tahmini varış süreleri ve canlı konumları, toplu taşıma yol tarifi, nöbetçi eczaneler, \
 hava durumu ve giyim önerisi, hava kalitesi ve veri kaynaklarının durumu. \
 Yeni araçlar eklendikçe onları da kullan.

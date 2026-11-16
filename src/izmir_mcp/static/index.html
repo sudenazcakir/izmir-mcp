@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>İzmir Asistanı</title>
+<title>CityMate · İzmir</title>
 <meta name="description" content="İzmir'de otobüs, nöbetçi eczane, hava kalitesi ve şehir bilgisini açık veriyle cevaplayan asistan.">
 <style>
   :root {
@@ -125,7 +125,7 @@
   .drawer-head { display: flex; align-items: center; gap: 8px; padding: 14px 14px 10px; border-bottom: 1px solid var(--line); }
   .drawer-head h2 { margin: 0; font-size: 16px; flex: 1; }
   /* Geniş ekranda Claude'daki gibi solda sabit kenar çubuğu */
-  @media (min-width: 900px) {
+  @media (min-width: 900px) and (min-height: 500px) {
     body { padding-left: 288px; }
     .drawer { width: 288px; transform: none; visibility: visible; box-shadow: none; transition: none;
       background: color-mix(in srgb, var(--solid) 82%, var(--bg)); }
@@ -241,7 +241,7 @@
     <button class="icon-btn" id="open-drawer" type="button" aria-label="Sohbetler ve favoriler"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h10"/></svg><span class="badge" id="fav-count" hidden></span></button>
     <div class="logo"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round" aria-hidden="true"><path d="M12 2v2.5"/><path d="M9.5 8c.4-2 1.4-3.2 2.5-3.6 1.1.4 2.1 1.6 2.5 3.6"/><path d="M9 8h6v3H9z"/><rect x="8.5" y="11" width="7" height="5"/><circle cx="12" cy="13.5" r="1.4"/><path d="M7 16h10v6H7z"/><path d="M5 22h14"/></svg></div>
     <div class="brand">
-      <h1>İzmir Asistanı</h1>
+      <h1>CityMate</h1>
       <p>Açık veriyle otobüs, yol tarifi, eczane, hava</p>
     </div>
     <label class="city" title="Şehir">
@@ -253,8 +253,8 @@
   </div>
 </header>
 <div class="scrim" id="scrim"></div>
-<aside class="drawer" id="drawer" role="dialog" aria-modal="true" aria-label="Kayıtlılar" aria-hidden="true" inert>
-  <div class="drawer-head"><h2>Sohbetler ve favoriler</h2><button class="x" id="close-drawer" type="button" aria-label="Kapat">✕</button></div>
+<aside class="drawer" id="drawer" role="dialog" aria-modal="true" aria-labelledby="drawer-title" aria-hidden="true" inert>
+  <div class="drawer-head"><h2 id="drawer-title">Sohbetler ve favoriler</h2><button class="x" id="close-drawer" type="button" aria-label="Kapat">✕</button></div>
   <div class="drawer-body">
     <button class="new-chat" id="new-chat" type="button">＋ Yeni sohbet</button>
     <section><h3>⭐ Favori duraklar</h3><div class="fav-list" id="fav-stops"></div></section>
@@ -621,8 +621,11 @@
   };
   const drawerEl = document.getElementById("drawer");
   const openBtn = document.getElementById("open-drawer");
-  const wide = matchMedia("(min-width: 900px)");
+  const wide = matchMedia("(min-width: 900px) and (min-height: 500px)");
+  // Panelde bir işlemden sonra odak görünür bir düğmede kalsın (geniş ekranda kapat düğmesi gizli).
+  const focusPanel = () => document.getElementById(wide.matches ? "new-chat" : "close-drawer").focus();
   function sidebarMode() {
+    const hadFocus = drawerEl.contains(document.activeElement);
     // Geniş ekranda panel hep açık bir kenar çubuğu; dialog değil, arkadaki sayfa kilitlenmez.
     document.body.classList.remove("drawer-open");
     for (const el of document.querySelectorAll("body > header, body > main, body > form")) el.inert = false;
@@ -633,6 +636,7 @@
       drawerEl.inert = true; drawerEl.setAttribute("aria-hidden", "true"); drawerEl.setAttribute("aria-modal", "true");
       drawerEl.setAttribute("role", "dialog");
     }
+    if (hadFocus) (wide.matches ? document.getElementById("new-chat") : openBtn).focus();
   }
   wide.addEventListener("change", sidebarMode);
   function openDrawer(open) {
@@ -640,7 +644,7 @@
     const was = document.body.classList.contains("drawer-open");
     document.body.classList.toggle("drawer-open", open); drawerEl.setAttribute("aria-hidden", !open); drawerEl.inert = !open;
     for (const el of document.querySelectorAll("body > header, body > main, body > form")) el.inert = open;
-    if (open) { drawDrawer(); document.getElementById("close-drawer").focus(); }
+    if (open) { drawDrawer(); focusPanel(); }
     else if (was && drawerEl.contains(document.activeElement)) openBtn.focus();
   }
   openBtn.addEventListener("click", () => openDrawer(true));
@@ -684,13 +688,13 @@
     const t = e.target.closest("button"); if (!t) return;
     if (t.dataset.del) {
       favs = loadFavs(); favs[t.dataset.del].splice(+t.dataset.i, 1); store.set("favs", favs);
-      drawDrawer(); drawHomeFavs(); refreshStars(); document.getElementById("close-drawer").focus();
+      drawDrawer(); drawHomeFavs(); refreshStars(); focusPanel();
     }
     else if (t.dataset.ask) { const f = favs[t.dataset.ask][+t.dataset.i]; openDrawer(false); newChat(); ask(askFor[t.dataset.ask](f)); }
-    else if (t.dataset.chat) { openDrawer(false); openChat(loadChats()[+t.dataset.chat]); }
+    else if (t.dataset.chat) { openDrawer(false); openChat(loadChats()[+t.dataset.chat]); if (wide.matches) q.focus(); }
     else if (t.dataset.delchat) {
       const chats = loadChats(); const [gone] = chats.splice(+t.dataset.delchat, 1); store.set("chats", chats);
-      drawDrawer(); document.getElementById("close-drawer").focus();
+      drawDrawer(); focusPanel();
       if (gone && gone.id === chatId) newChat();  // açık sohbet silindiyse tekrar kaydedilmesin
     }
   });
