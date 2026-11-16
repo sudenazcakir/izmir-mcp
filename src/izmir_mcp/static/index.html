@@ -138,50 +138,35 @@
     header p { font-size: 13.5px; }
     .tower { right: max(-40px, calc(50% - 560px - 144px)); }
   }
-  .drawer-body { flex: 1; overflow-y: auto; padding: 6px 10px 12px; display: flex; flex-direction: column; gap: 2px; }
-  .side-new { display: flex; align-items: center; gap: 10px; width: 100%; margin: 4px 0 6px; font: inherit; font-size: 14.5px;
-    font-weight: 600; color: var(--fg); background: var(--solid); border: 1px solid var(--line); border-radius: 12px;
-    padding: 9px 12px; cursor: pointer; box-shadow: var(--shadow); }
-  .side-new svg { width: 18px; height: 18px; color: var(--accent); }
-  .side-new:hover { border-color: var(--accent); }
-  .sec-head { display: flex; align-items: center; gap: 6px; width: 100%; font: inherit; font-size: 12px; font-weight: 600;
-    letter-spacing: .05em; text-transform: uppercase; color: var(--muted); background: none; border: 0; border-radius: 8px;
-    padding: 12px 8px 6px; cursor: pointer; text-align: left; }
+  .drawer-body { flex: 1; overflow-y: auto; padding: 4px 10px 12px; display: flex; flex-direction: column; }
+  /* Claude'un kenar çubuğu gibi: çizgi simgeli düz satırlar, kutu ve çerçeve yok */
+  .nav, .row-go { display: flex; align-items: center; gap: 12px; width: 100%; min-width: 0; font: inherit; font-size: 15px;
+    color: var(--fg); background: none; border: 0; border-radius: 10px; padding: 8px 10px; cursor: pointer; text-align: left; }
+  .nav svg, .row-go svg { flex: none; width: 20px; height: 20px; color: var(--fg); opacity: .85; }
+  .nav:hover, .row:hover, .row:focus-within { background: color-mix(in srgb, var(--fg) 6%, transparent); }
+  .nav[aria-expanded="true"] { background: color-mix(in srgb, var(--fg) 6%, transparent); }
+  .search-box { padding: 4px 4px 6px; }
+  .search-box input { width: 100%; font: inherit; font-size: 14px; color: var(--fg); background: var(--solid);
+    border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; outline: none; }
+  .search-box input:focus { border-color: var(--accent); }
+  .sec-head { display: inline-flex; align-items: center; gap: 4px; align-self: start; font: inherit; font-size: 13.5px;
+    color: var(--muted); background: none; border: 0; border-radius: 8px; padding: 18px 10px 6px; cursor: pointer; }
   .sec-head:hover { color: var(--fg); }
   .sec-head svg { width: 14px; height: 14px; transition: transform .15s; }
   .sec-head[aria-expanded="false"] svg { transform: rotate(-90deg); }
   .sec-head[aria-expanded="false"] + .sec-body { display: none; }
-  .count { margin-left: auto; min-width: 20px; text-align: center; font-size: 11px; letter-spacing: 0; color: var(--fg);
-    background: var(--accent-soft); border-radius: 999px; padding: 0 7px; }
-  .count:empty { display: none; }
-  .fav-chips { display: flex; flex-wrap: wrap; gap: 6px; padding: 2px 4px 4px; }
-  .fchip { display: inline-flex; align-items: center; gap: 5px; max-width: 100%; font: inherit; font-size: 13px; color: var(--fg);
-    background: var(--solid); border: 1px solid var(--line); border-radius: 999px; padding: 4px 10px; cursor: pointer; }
-  .fchip:hover { border-color: var(--accent); }
-  .fchip span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 150px; }
-  .fchip i { font-style: normal; font-size: 12px; }
-  .fchip.del { border-style: dashed; }
-  .fchip.del::after { content: "✕"; font-size: 11px; color: var(--muted); margin-left: 2px; }
-  .fchip.more { color: var(--muted); background: transparent; }
-  .fav-tools { display: flex; justify-content: flex-end; padding: 0 6px; }
-  .link-btn { font: inherit; font-size: 12px; color: var(--muted); background: none; border: 0; padding: 2px 4px; cursor: pointer; }
-  .link-btn:hover { color: var(--fg); text-decoration: underline; }
-  .row { display: flex; align-items: center; gap: 1px; border-radius: 10px; }
-  .row:hover, .row:focus-within { background: color-mix(in srgb, var(--fg) 6%, transparent); }
-  .row.on { background: var(--accent-soft); }
-  .row-go { flex: 1; min-width: 0; display: flex; align-items: center; gap: 9px; text-align: left; font: inherit; font-size: 14px;
-    color: var(--fg); background: none; border: 0; padding: 7px 8px; cursor: pointer; border-radius: 10px; }
-  .row-go .ic { flex: none; width: 18px; text-align: center; font-size: 14px; }
+  .sec-body { display: flex; flex-direction: column; }
+  .row { display: flex; align-items: center; border-radius: 10px; }
+  .row.on { background: color-mix(in srgb, var(--fg) 9%, transparent); }
   .row-go .t { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .row-go small { display: block; color: var(--muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; }
-  .row-act { flex: none; width: 28px; height: 28px; display: grid; place-items: center; border-radius: 8px; border: 0; background: none;
-    color: var(--muted); cursor: pointer; text-decoration: none; font-size: 13px; opacity: 0; }
-  .row:hover .row-act, .row:focus-within .row-act, .row.on .row-act { opacity: 1; }
-  @media (hover: none) { .row-act { opacity: .75; } }
-  .row-act:hover { background: var(--solid); color: var(--fg); }
-  .group { font-size: 11.5px; font-weight: 600; color: var(--muted); padding: 10px 8px 3px; }
-  .more { align-self: start; font: inherit; font-size: 12.5px; color: var(--accent); background: none; border: 0; padding: 4px 8px; cursor: pointer; }
-  .empty { font-size: 13px; color: var(--muted); padding: 4px 8px 6px; }
+  .row-act { flex: none; width: 30px; height: 30px; margin-right: 4px; display: grid; place-items: center; border-radius: 8px;
+    border: 0; background: none; color: var(--muted); cursor: pointer; opacity: 0; }
+  .row-act svg { width: 16px; height: 16px; }
+  .row:hover .row-act, .row:focus-within .row-act { opacity: 1; }
+  @media (hover: none) { .row-act { opacity: .6; } }
+  .row-act:hover { color: var(--error); }
+  .nav.muted { font-size: 14px; color: var(--muted); }
+  .empty { font-size: 13.5px; color: var(--muted); padding: 4px 10px 6px; line-height: 1.45; }
   .side-foot { border-top: 1px solid var(--line); padding: 10px 16px calc(10px + env(safe-area-inset-bottom)); font-size: 12.5px; color: var(--muted); }
   .side-foot summary { cursor: pointer; list-style: none; display: flex; gap: 6px; align-items: center; }
   .side-foot summary::-webkit-details-marker { display: none; }
@@ -297,17 +282,16 @@
     <button class="x" id="close-drawer" type="button" aria-label="Menüyü kapat">✕</button>
   </div>
   <div class="drawer-body">
-    <button class="side-new" id="new-chat" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Yeni sohbet</button>
+    <button class="nav" id="new-chat" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>Yeni sohbet</button>
+    <button class="nav" id="search-btn" type="button" aria-expanded="false" aria-controls="search-box"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>Ara</button>
+    <div class="search-box" id="search-box" hidden><input id="side-q" type="search" placeholder="Sohbet ya da favori ara…" aria-label="Sohbet ya da favori ara" autocomplete="off"></div>
     <section class="side-sec">
-      <button class="sec-head" type="button" data-sec="favs" aria-expanded="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>Favoriler<span class="count" id="fav-total"></span></button>
-      <div class="sec-body">
-        <div class="fav-chips" id="fav-list"></div>
-        <div class="fav-tools" id="fav-tools"></div>
-      </div>
+      <button class="sec-head" type="button" data-sec="favs" aria-expanded="true">Favoriler<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></button>
+      <div class="sec-body" id="fav-list"></div>
     </section>
     <section class="side-sec">
-      <button class="sec-head" type="button" data-sec="chats" aria-expanded="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>Sohbetler<span class="count" id="chat-total"></span></button>
-      <div class="sec-body"><div id="chat-list"></div></div>
+      <button class="sec-head" type="button" data-sec="chats" aria-expanded="true">Son sohbetler<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></button>
+      <div class="sec-body" id="chat-list"></div>
     </section>
   </div>
   <div class="side-foot">
@@ -715,64 +699,61 @@
   document.getElementById("scrim").addEventListener("click", () => openDrawer(false));
   document.addEventListener("keydown", e => { if (e.key === "Escape") openDrawer(false); });
 
-  const KINDS = { stops: ["🚏", "Duraklar"], lines: ["🚌", "Hatlar"], pharmacies: ["💊", "Eczaneler"] };
-  const FAV_SHOW = 6;
+  const KINDS = { stops: "durak", lines: "hat", pharmacies: "eczane" };
+  const ICONS = { stops: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21s-6-5.3-6-10a6 6 0 0 1 12 0c0 4.7-6 10-6 10Z"/><circle cx="12" cy="11" r="2.2"/></svg>', lines: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="3.5" width="14" height="14" rx="3"/><path d="M5 11h14M8.5 17.5V20M15.5 17.5V20"/><circle cx="8.5" cy="14.3" r=".6"/><circle cx="15.5" cy="14.3" r=".6"/></svg>', pharmacies: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="4"/><path d="M12 8.5v7M8.5 12h7"/></svg>', chat: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 12a8 8 0 0 1-11.6 7.1L4 20l1-4.1A8 8 0 1 1 20 12Z"/></svg>', trash: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V4h6v3"/></svg>' };
+  const FAV_SHOW = 5;
+  // Aramada büyük/küçük harf ve Türkçe karakter farkı önemsiz (Karşıyaka = karsiyaka).
+  const norm = t => String(t || "").toLocaleLowerCase("tr").replace(/ı/g, "i").normalize("NFD").replace(/[\u0300-\u036f]/g, "");
   const ui = (() => { const u = store.get("ui", {}); const o = u && typeof u === "object" ? u : {};
-    return { favs: o.favs !== false, chats: o.chats !== false, all: false, edit: false }; })();
+    return { favs: o.favs !== false, chats: o.chats !== false, all: false, q: "" }; })();
   const saveUi = () => store.set("ui", { favs: ui.favs, chats: ui.chats });
-  const act = (label, html, attrs) => '<button class="row-act" type="button" ' + attrs + ' aria-label="' + esc(label) + '" title="' +
-    esc(label) + '">' + html + "</button>";
-  // Favori: küçük bir etiket. Dokununca soruyu sorar; "Düzenle" modunda dokununca siler.
-  function favChip(kind, f, i) {
-    const name = kind === "pharmacies" ? (f.name || f.key.split("|")[0]) : f.key;
-    const label = ui.edit ? name + " favorisini sil" : "Sor: " + askFor[kind](f);
-    return '<button type="button" class="fchip' + (ui.edit ? " del" : "") + '" ' +
-      (ui.edit ? 'data-del="' : 'data-ask="') + kind + '" data-i="' + i + '" aria-label="' + esc(label) + '" title="' +
-      esc(label) + '"><i>' + KINDS[kind][0] + "</i><span>" + esc(name) + "</span></button>";
-  }
-  function dayLabel(at) {
-    const d = new Date(at), t = new Date(); t.setHours(0, 0, 0, 0);
-    const days = Math.floor((t - new Date(d.getFullYear(), d.getMonth(), d.getDate())) / 864e5);
-    return days <= 0 ? "Bugün" : days === 1 ? "Dün" : days < 7 ? "Bu hafta" : "Daha önce";
-  }
+  const favName = (kind, f) => kind === "pharmacies" ? (f.name || f.key.split("|")[0]) : f.key;
+  const delBtn = (label, attrs) => '<button class="row-act" type="button" ' + attrs + ' aria-label="' + esc(label) + '" title="Sil">' +
+    ICONS.trash + "</button>";
   function drawDrawer() {
     const total = favs.stops.length + favs.lines.length + favs.pharmacies.length;
-    document.getElementById("fav-total").textContent = total || "";
-    const all = Object.keys(KINDS).flatMap(k => favs[k].map((f, i) => [k, f, i]));
-    if (!total) ui.edit = false;
-    const shown = ui.all || ui.edit ? all : all.slice(0, FAV_SHOW);
-    document.getElementById("fav-list").innerHTML = total
-      ? shown.map(([k, f, i]) => favChip(k, f, i)).join("") + (all.length > shown.length
-        ? '<button type="button" class="fchip more" data-more aria-label="Tüm favorileri göster">+' + (all.length - shown.length) + "</button>" : "")
-      : '<div class="empty">Kartlardaki ☆ ile durak, hat ya da eczane ekle; buradan tek dokunuşla sorarsın.</div>';
-    document.getElementById("fav-tools").innerHTML = total
-      ? (ui.all && !ui.edit && all.length > FAV_SHOW ? '<button type="button" class="link-btn" data-more>Daha az</button>' : "") +
-        '<button type="button" class="link-btn" data-edit>' + (ui.edit ? "Bitti" : "Düzenle") + "</button>" : "";
-    const chats = loadChats();
-    document.getElementById("chat-total").textContent = chats.length || "";
-    let last = "";
+    const needle = norm(ui.q);
+    const hit = t => !needle || norm(t).includes(needle);
+    const all = Object.keys(KINDS).flatMap(k => favs[k].map((f, i) => [k, f, i])).filter(([k, f]) => hit(favName(k, f)));
+    const shown = ui.all || needle ? all : all.slice(0, FAV_SHOW);
+    document.getElementById("fav-list").innerHTML = shown.length
+      ? shown.map(([k, f, i]) => { const n = favName(k, f);
+          return '<div class="row"><button class="row-go" type="button" data-ask="' + k + '" data-i="' + i + '" title="Sor: ' +
+            esc(askFor[k](f)) + '">' + ICONS[k] + '<span class="t">' + esc(n) + "</span></button>" +
+            delBtn(n + " favorisini sil", 'data-del="' + k + '" data-i="' + i + '"') + "</div>"; }).join("") +
+        (all.length > FAV_SHOW && !needle ? '<button class="nav muted" type="button" data-more>' +
+          (ui.all ? "Daha az göster" : "Tümünü göster (" + all.length + ")") + "</button>" : "")
+      : '<div class="empty">' + (needle ? "Eşleşen favori yok." :
+          "Kartlardaki ☆ Kaydet ile durak, hat ya da eczane ekle.") + "</div>";
+    const chats = loadChats().map((c, i) => [c, i]).filter(([c]) => hit(c.title));
     document.getElementById("chat-list").innerHTML = (storeOk ? "" :
       '<div class="empty">Bu cihazda yer kalmadı ya da kayıt kapalı. Sohbetlerin bir kısmı yalnız sayfa açıkken duruyor.</div>') +
-      (chats.length ? chats.map((c, i) => {
-        const g = dayLabel(c.at), head = g !== last ? '<div class="group">' + g + "</div>" : ""; last = g;
-        const on = c.id === chatId;
-        return head + '<div class="row' + (on ? " on" : "") + '"><button class="row-go" type="button" data-chat="' + i + '"' +
+      (chats.length ? chats.map(([c, i]) => { const on = c.id === chatId;
+        return '<div class="row' + (on ? " on" : "") + '"><button class="row-go" type="button" data-chat="' + i + '"' +
           (on ? ' aria-current="true"' : "") + ' title="' + esc(c.title) + '"><span class="t">' + esc(c.title) + "</span></button>" +
-          act(c.title + " sohbetini sil", "✕", 'data-delchat="' + i + '"') + "</div>";
-      }).join("") : '<div class="empty">Sorduğun sorular burada otomatik saklanır.</div>');
-    for (const b of drawerEl.querySelectorAll(".sec-head")) b.setAttribute("aria-expanded", !!ui[b.dataset.sec]);
+          delBtn(c.title + " sohbetini sil", 'data-delchat="' + i + '"') + "</div>"; }).join("")
+        : '<div class="empty">' + (needle ? "Eşleşen sohbet yok." : "Sorduğun sorular burada otomatik saklanır.") + "</div>");
+    for (const b of drawerEl.querySelectorAll(".sec-head")) b.setAttribute("aria-expanded", !!(ui[b.dataset.sec] || needle));
     const badge = document.getElementById("fav-count"); badge.hidden = !total; badge.textContent = total;
   }
+  const searchBtn = document.getElementById("search-btn"), searchBox = document.getElementById("search-box"),
+    sideQ = document.getElementById("side-q");
+  function toggleSearch(open) {
+    searchBox.hidden = !open; searchBtn.setAttribute("aria-expanded", open);
+    if (open) sideQ.focus(); else { sideQ.value = ""; ui.q = ""; drawDrawer(); }
+  }
+  searchBtn.addEventListener("click", () => toggleSearch(searchBox.hidden));
+  sideQ.addEventListener("input", () => { ui.q = sideQ.value; drawDrawer(); });
+  sideQ.addEventListener("keydown", e => { if (e.key === "Escape") { e.stopPropagation(); toggleSearch(false); searchBtn.focus(); } });
   drawerEl.addEventListener("click", e => {
     const t = e.target.closest("button"); if (!t || !drawerEl.contains(t)) return;
     if (t.dataset.sec) { ui[t.dataset.sec] = !ui[t.dataset.sec]; saveUi(); drawDrawer(); t.focus(); return; }
     if ("more" in t.dataset) { ui.all = !ui.all; drawDrawer(); return; }
-    if ("edit" in t.dataset) { ui.edit = !ui.edit; drawDrawer(); drawerEl.querySelector("[data-edit]")?.focus(); return; }
     if (t.dataset.wipe) { wipe(t.dataset.wipe); return; }
     if (t.dataset.del) {
       favs = loadFavs(); favs[t.dataset.del].splice(+t.dataset.i, 1); store.set("favs", favs);
       drawDrawer(); drawHomeFavs(); refreshStars();
-      (drawerEl.querySelector(".fchip") || drawerEl.querySelector("[data-edit]") || document.getElementById("new-chat")).focus();
+      (drawerEl.querySelector("#fav-list .row-go") || document.getElementById("new-chat")).focus();
     }
     else if (t.dataset.ask) { const f = favs[t.dataset.ask][+t.dataset.i]; openDrawer(false); newChat(); ask(askFor[t.dataset.ask](f)); }
     else if (t.dataset.chat) { openDrawer(false); openChat(loadChats()[+t.dataset.chat]); if (wide.matches) q.focus(); }
