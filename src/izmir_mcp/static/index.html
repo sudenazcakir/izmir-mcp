@@ -122,36 +122,65 @@
     transition: transform .25s ease, visibility 0s linear .25s; visibility: hidden; display: flex; flex-direction: column; }
   body.drawer-open .scrim { opacity: 1; pointer-events: auto; }
   body.drawer-open .drawer { transform: none; visibility: visible; transition: transform .25s ease; }
-  .drawer-head { display: flex; align-items: center; gap: 8px; padding: 14px 14px 10px; border-bottom: 1px solid var(--line); }
-  .drawer-head h2 { margin: 0; font-size: 16px; flex: 1; }
+  .drawer-head { display: flex; align-items: center; gap: 8px; padding: 12px 12px 6px 16px; }
+  .side-brand { flex: 1; display: flex; align-items: center; gap: 9px; font-size: 15.5px; font-weight: 700; letter-spacing: -.01em; }
+  .side-brand .logo { width: 28px; height: 28px; border-radius: 9px; box-shadow: none; }
+  .side-brand .logo svg { width: 16px; height: 16px; }
   /* Geniş ekranda Claude'daki gibi solda sabit kenar çubuğu */
   @media (min-width: 900px) and (min-height: 500px) {
     body { padding-left: 288px; }
     .drawer { width: 288px; transform: none; visibility: visible; box-shadow: none; transition: none;
       background: color-mix(in srgb, var(--solid) 82%, var(--bg)); }
     .scrim, #open-drawer, #close-drawer { display: none; }
+    header .logo, header h1 { display: none; }  /* ad ve logo zaten kenar çubuğunda */
+    header p { font-size: 13.5px; }
     .tower { right: max(-40px, calc(50% - 560px - 144px)); }
   }
-  .drawer-body { overflow-y: auto; padding: 12px 14px 20px; display: grid; gap: 18px; align-content: start; }
-  .drawer h3 { margin: 0 0 8px; font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
-  .new-chat { font: inherit; font-weight: 600; cursor: pointer; border: 0; border-radius: 14px; padding: 10px 14px; width: 100%;
-    background: linear-gradient(135deg, var(--accent), var(--accent-2)); color: var(--accent-ink); }
-  .fav-list, .chat-list { display: grid; gap: 6px; }
-  .fav-item, .chat-item { display: flex; align-items: center; gap: 8px; border: 1px solid var(--line); border-radius: 12px;
-    padding: 7px 8px 7px 11px; font-size: 14px; background: var(--bg); }
-  .fav-item .go, .chat-item .go { flex: 1; min-width: 0; text-align: left; font: inherit; color: var(--fg); background: none; border: 0;
-    cursor: pointer; padding: 0; }
-  .fav-item .go small, .chat-item .go small { display: block; color: var(--muted); font-size: 12px; white-space: nowrap;
-    overflow: hidden; text-overflow: ellipsis; }
-  .fav-item a { font-size: 12.5px; text-decoration: none; color: var(--accent); white-space: nowrap; }
-  .x { flex: none; width: 26px; height: 26px; border-radius: 8px; border: 0; background: transparent; color: var(--muted);
-    cursor: pointer; font-size: 15px; }
-  .x:hover { background: var(--accent-soft); color: var(--fg); }
-  .chat-item.on { border-color: var(--accent); background: var(--accent-soft); }
-  .empty { font-size: 13px; color: var(--muted); }
-  .privacy { font-size: 12px; color: var(--muted); display: grid; gap: 8px; }
-  .privacy button { justify-self: start; font: inherit; font-size: 12.5px; color: var(--error); background: none; border: 1px solid var(--line);
-    border-radius: 999px; padding: 4px 12px; cursor: pointer; }
+  .drawer-body { flex: 1; overflow-y: auto; padding: 6px 10px 12px; display: flex; flex-direction: column; gap: 2px; }
+  .side-new { display: flex; align-items: center; gap: 10px; width: 100%; margin: 4px 0 6px; font: inherit; font-size: 14.5px;
+    font-weight: 600; color: var(--fg); background: var(--solid); border: 1px solid var(--line); border-radius: 12px;
+    padding: 9px 12px; cursor: pointer; box-shadow: var(--shadow); }
+  .side-new svg { width: 18px; height: 18px; color: var(--accent); }
+  .side-new:hover { border-color: var(--accent); }
+  .sec-head { display: flex; align-items: center; gap: 6px; width: 100%; font: inherit; font-size: 12px; font-weight: 600;
+    letter-spacing: .05em; text-transform: uppercase; color: var(--muted); background: none; border: 0; border-radius: 8px;
+    padding: 12px 8px 6px; cursor: pointer; text-align: left; }
+  .sec-head:hover { color: var(--fg); }
+  .sec-head svg { width: 14px; height: 14px; transition: transform .15s; }
+  .sec-head[aria-expanded="false"] svg { transform: rotate(-90deg); }
+  .sec-head[aria-expanded="false"] + .sec-body { display: none; }
+  .count { margin-left: auto; min-width: 20px; text-align: center; font-size: 11px; letter-spacing: 0; color: var(--fg);
+    background: var(--accent-soft); border-radius: 999px; padding: 0 7px; }
+  .count:empty { display: none; }
+  .seg { display: flex; gap: 3px; background: var(--bg); border: 1px solid var(--line); border-radius: 11px; padding: 3px; margin: 2px 2px 6px; }
+  .seg button { flex: 1; min-width: 0; font: inherit; font-size: 12.5px; border: 0; background: none; border-radius: 8px;
+    padding: 5px 2px; color: var(--muted); cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .seg button[aria-selected="true"] { background: var(--solid); color: var(--fg); font-weight: 600; box-shadow: 0 1px 3px rgba(0,0,0,.1); }
+  .seg button b { font-weight: 600; opacity: .6; margin-left: 2px; }
+  .row { display: flex; align-items: center; gap: 1px; border-radius: 10px; }
+  .row:hover, .row:focus-within { background: color-mix(in srgb, var(--fg) 6%, transparent); }
+  .row.on { background: var(--accent-soft); }
+  .row-go { flex: 1; min-width: 0; display: flex; align-items: center; gap: 9px; text-align: left; font: inherit; font-size: 14px;
+    color: var(--fg); background: none; border: 0; padding: 7px 8px; cursor: pointer; border-radius: 10px; }
+  .row-go .ic { flex: none; width: 18px; text-align: center; font-size: 14px; }
+  .row-go .t { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .row-go small { display: block; color: var(--muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; }
+  .row-act { flex: none; width: 28px; height: 28px; display: grid; place-items: center; border-radius: 8px; border: 0; background: none;
+    color: var(--muted); cursor: pointer; text-decoration: none; font-size: 13px; opacity: 0; }
+  .row:hover .row-act, .row:focus-within .row-act, .row.on .row-act { opacity: 1; }
+  @media (hover: none) { .row-act { opacity: .75; } }
+  .row-act:hover { background: var(--solid); color: var(--fg); }
+  .group { font-size: 11.5px; font-weight: 600; color: var(--muted); padding: 10px 8px 3px; }
+  .more { align-self: start; font: inherit; font-size: 12.5px; color: var(--accent); background: none; border: 0; padding: 4px 8px; cursor: pointer; }
+  .empty { font-size: 13px; color: var(--muted); padding: 4px 8px 6px; }
+  .side-foot { border-top: 1px solid var(--line); padding: 10px 16px calc(10px + env(safe-area-inset-bottom)); font-size: 12.5px; color: var(--muted); }
+  .side-foot summary { cursor: pointer; list-style: none; display: flex; gap: 6px; align-items: center; }
+  .side-foot summary::-webkit-details-marker { display: none; }
+  .side-foot summary u { margin-left: auto; color: var(--fg); text-decoration: none; font-weight: 600; }
+  .manage { display: grid; gap: 6px; margin-top: 10px; }
+  .manage button { font: inherit; font-size: 13px; text-align: left; color: var(--error); background: none; border: 1px solid var(--line);
+    border-radius: 10px; padding: 7px 10px; cursor: pointer; }
+  .manage button:hover { background: color-mix(in srgb, var(--error) 8%, transparent); }
   .star { flex: none; font: inherit; font-size: 12.5px; cursor: pointer; color: var(--muted); background: var(--solid);
     border: 1px solid var(--line); border-radius: 999px; padding: 2px 9px; white-space: nowrap; }
   .star.on { color: #b45309; border-color: #f59e0b; background: #fff7e6; }
@@ -253,18 +282,34 @@
   </div>
 </header>
 <div class="scrim" id="scrim"></div>
-<aside class="drawer" id="drawer" role="dialog" aria-modal="true" aria-labelledby="drawer-title" aria-hidden="true" inert>
-  <div class="drawer-head"><h2 id="drawer-title">Sohbetler ve favoriler</h2><button class="x" id="close-drawer" type="button" aria-label="Kapat">✕</button></div>
+<aside class="drawer" id="drawer" role="dialog" aria-modal="true" aria-label="Sohbetler ve favoriler" aria-hidden="true" inert>
+  <div class="drawer-head">
+    <div class="side-brand"><span class="logo"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round" aria-hidden="true"><path d="M12 2v2.5"/><path d="M9.5 8c.4-2 1.4-3.2 2.5-3.6 1.1.4 2.1 1.6 2.5 3.6"/><path d="M9 8h6v3H9z"/><rect x="8.5" y="11" width="7" height="5"/><circle cx="12" cy="13.5" r="1.4"/><path d="M7 16h10v6H7z"/><path d="M5 22h14"/></svg></span>CityMate</div>
+    <button class="x" id="close-drawer" type="button" aria-label="Menüyü kapat">✕</button>
+  </div>
   <div class="drawer-body">
-    <button class="new-chat" id="new-chat" type="button">＋ Yeni sohbet</button>
-    <section><h3>⭐ Favori duraklar</h3><div class="fav-list" id="fav-stops"></div></section>
-    <section><h3>🚌 Favori hatlar</h3><div class="fav-list" id="fav-lines"></div></section>
-    <section><h3>💊 Favori eczaneler</h3><div class="fav-list" id="fav-pharmacies"></div></section>
-    <section><h3>💬 Kayıtlı sohbetler</h3><div class="chat-list" id="chat-list"></div></section>
-    <section class="privacy">
-      <span>Favoriler ve sohbetler yalnızca bu cihazda, tarayıcında saklanır; sunucumuza kaydedilmez.</span>
-      <button type="button" id="wipe">Bu cihazdaki tüm kayıtları sil</button>
+    <button class="side-new" id="new-chat" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Yeni sohbet</button>
+    <section class="side-sec">
+      <button class="sec-head" type="button" data-sec="favs" aria-expanded="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>Favoriler<span class="count" id="fav-total"></span></button>
+      <div class="sec-body">
+        <div class="seg" role="tablist" aria-label="Favori türü" id="fav-tabs"></div>
+        <div id="fav-list" role="tabpanel"></div>
+      </div>
     </section>
+    <section class="side-sec">
+      <button class="sec-head" type="button" data-sec="chats" aria-expanded="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>Sohbetler<span class="count" id="chat-total"></span></button>
+      <div class="sec-body"><div id="chat-list"></div></div>
+    </section>
+  </div>
+  <div class="side-foot">
+    <details id="manage">
+      <summary>🔒 Kayıtların yalnız bu cihazda<u>Yönet</u></summary>
+      <div class="manage">
+        <button type="button" data-wipe="chats">Sohbetleri sil</button>
+        <button type="button" data-wipe="favs">Favorileri sil</button>
+        <button type="button" data-wipe="all">Hepsini sil (sohbetler ve favoriler)</button>
+      </div>
+    </details>
   </div>
 </aside>
 <main id="scroll">
@@ -558,6 +603,7 @@
       try { localStorage.setItem("izm:" + k, JSON.stringify(v)); unsaved.delete(k); return true; }
       catch { unsaved.add(k); return false; }
     },
+    del(k) { delete mem[k]; unsaved.delete(k); try { localStorage.removeItem("izm:" + k); } catch {} },
     wipe() { unsaved.clear(); for (const k of Object.keys(mem)) delete mem[k];
       try { Object.keys(localStorage).filter(k => k.startsWith("izm:")).forEach(k => localStorage.removeItem(k)); } catch {} },
   };
@@ -618,6 +664,13 @@
   const askFor = {
     stops: f => f.key + " durağına yaklaşan otobüsler nerede?",
     lines: f => f.key + " hattında güncel bir duyuru var mı?",
+    pharmacies: f => (f.name || f.key.split("|")[0]) + " eczanesi" + (f.address ? " (" + f.address + ")" : "") +
+      " bugün nöbetçi mi? Değilse aynı bölgedeki nöbetçi eczaneler hangileri?",
+  };
+  // Açık sohbet sayfa yenilenince geri gelsin (yalnız bu sekmede).
+  const cur = {
+    get() { try { return sessionStorage.getItem("izm:current"); } catch { return null; } },
+    set(id) { try { id ? sessionStorage.setItem("izm:current", id) : sessionStorage.removeItem("izm:current"); } catch {} },
   };
   const drawerEl = document.getElementById("drawer");
   const openBtn = document.getElementById("open-drawer");
@@ -653,39 +706,66 @@
   document.getElementById("scrim").addEventListener("click", () => openDrawer(false));
   document.addEventListener("keydown", e => { if (e.key === "Escape") openDrawer(false); });
 
+  const KINDS = { stops: ["🚏", "Duraklar"], lines: ["🚌", "Hatlar"], pharmacies: ["💊", "Eczaneler"] };
+  const FAV_SHOW = 5;
+  const ui = (() => { const u = store.get("ui", {}); const o = u && typeof u === "object" ? u : {};
+    return { favs: o.favs !== false, chats: o.chats !== false, tab: KINDS[o.tab] ? o.tab : null, all: false }; })();
+  const saveUi = () => store.set("ui", { favs: ui.favs, chats: ui.chats, tab: ui.tab });
+  const act = (label, html, attrs) => '<button class="row-act" type="button" ' + attrs + ' aria-label="' + esc(label) + '" title="' +
+    esc(label) + '">' + html + "</button>";
   function favRow(kind, f, i) {
-    if (kind === "pharmacies") {
-      return '<div class="fav-item"><span class="go"><b>' + esc(f.name || f.key) + "</b><small>" + esc(f.address || "") +
-        "</small></span>" + (f.phone ? '<a href="tel:' + esc(f.phone.replace(/[^\d+]/g, "")) + '" aria-label="' + esc((f.name || f.key) + " eczanesini ara") + '">📞</a>' : "") +
-        (f.lat != null ? '<a href="' + esc(routeUrl(f)) + '" target="_blank" rel="noopener">🧭 Yol</a>' : "") +
-        '<button class="x" type="button" data-del="' + kind + '" data-i="' + i + '" aria-label="' + esc((f.name || f.key) + " favorisini sil") + '">✕</button></div>';
-    }
-    return '<div class="fav-item"><button class="go" type="button" data-ask="' + kind + '" data-i="' + i + '"><b>' +
-      esc(f.key) + "</b>" + (f.name ? "<small>" + esc(f.name) + "</small>" : "") + "</button>" +
-      '<button class="x" type="button" data-del="' + kind + '" data-i="' + i + '" aria-label="' + esc(f.key + " favorisini sil") + '">✕</button></div>';
+    const name = kind === "pharmacies" ? (f.name || f.key.split("|")[0]) : f.key;
+    const sub = kind === "pharmacies" ? f.address : f.name;
+    return '<div class="row"><button class="row-go" type="button" data-ask="' + kind + '" data-i="' + i + '" title="Sor: ' +
+      esc(askFor[kind](f)) + '"><span class="ic">' + KINDS[kind][0] + '</span><span class="t">' + esc(name) +
+      (sub ? "<small>" + esc(sub) + "</small>" : "") + "</span></button>" +
+      (kind === "pharmacies" && f.phone ? '<a class="row-act" href="tel:' + esc(f.phone.replace(/[^\d+]/g, "")) +
+        '" aria-label="' + esc(name + " eczanesini ara") + '" title="Ara">📞</a>' : "") +
+      (kind === "pharmacies" && f.lat != null ? '<a class="row-act" href="' + esc(routeUrl(f)) +
+        '" target="_blank" rel="noopener" aria-label="' + esc(name + " için yol tarifi") + '" title="Yol tarifi">🧭</a>' : "") +
+      act(name + " favorisini sil", "✕", 'data-del="' + kind + '" data-i="' + i + '"') + "</div>";
+  }
+  function dayLabel(at) {
+    const d = new Date(at), t = new Date(); t.setHours(0, 0, 0, 0);
+    const days = Math.floor((t - new Date(d.getFullYear(), d.getMonth(), d.getDate())) / 864e5);
+    return days <= 0 ? "Bugün" : days === 1 ? "Dün" : days < 7 ? "Bu hafta" : "Daha önce";
   }
   function drawDrawer() {
-    const empty = { stops: "Canlı otobüs kartındaki ☆ Kaydet ile durak ekle.", lines: "Otobüs listesindeki ☆ ile hat ekle.",
-      pharmacies: "Eczane kartlarındaki ☆ Kaydet ile ekle. Favori eczane her gün nöbetçi olmayabilir." };
-    for (const kind of ["stops", "lines", "pharmacies"]) {
-      document.getElementById("fav-" + kind).innerHTML = favs[kind].length
-        ? favs[kind].map((f, i) => favRow(kind, f, i)).join("") : '<div class="empty">' + empty[kind] + "</div>";
-    }
+    const total = favs.stops.length + favs.lines.length + favs.pharmacies.length;
+    let tab = ui.tab && (favs[ui.tab].length || !total) ? ui.tab : Object.keys(KINDS).find(k => favs[k].length) || "stops";
+    document.getElementById("fav-total").textContent = total || "";
+    document.getElementById("fav-tabs").innerHTML = Object.entries(KINDS).map(([k, [ic, label]]) =>
+      '<button type="button" role="tab" data-tab="' + k + '" aria-selected="' + (k === tab) + '"' + (k === tab ? "" : ' tabindex="-1"') +
+      ">" + label + (favs[k].length ? "<b>" + favs[k].length + "</b>" : "") + "</button>").join("");
+    const list = favs[tab], shown = ui.all ? list : list.slice(0, FAV_SHOW);
+    const hint = { stops: "Canlı otobüs kartında ☆ Kaydet'e bas.", lines: "Otobüs satırındaki ☆ ile hat ekle.",
+      pharmacies: "Eczane kartında ☆ Kaydet'e bas." };
+    document.getElementById("fav-list").innerHTML = list.length
+      ? shown.map(f => favRow(tab, f, list.indexOf(f))).join("") + (list.length > FAV_SHOW
+        ? '<button class="more" type="button" data-more>' + (ui.all ? "Daha az göster" : "+" + (list.length - FAV_SHOW) + " tane daha") + "</button>" : "")
+      : '<div class="empty">' + hint[tab] + "</div>";
     const chats = loadChats();
-    document.getElementById("chat-list").innerHTML = chats.length ? chats.map((c, i) =>
-      '<div class="chat-item' + (c.id === chatId ? " on" : "") + '"><button class="go" type="button" data-chat="' + i + '"' +
-      (c.id === chatId ? ' aria-current="true"' : "") + '><b>' + esc(c.title) + "</b><small>" +
-      esc(new Date(c.at).toLocaleString("tr-TR", { dateStyle: "medium", timeStyle: "short" })) + " · " +
-      Math.ceil(c.msgs.length / 2) + " soru</small></button>" +
-      '<button class="x" type="button" data-delchat="' + i + '" aria-label="' + esc(c.title + " sohbetini sil") + '">✕</button></div>').join("")
-      : '<div class="empty">Sorduğun sorular burada otomatik saklanır.</div>';
-    if (!storeOk) document.getElementById("chat-list").insertAdjacentHTML("afterbegin",
-      '<div class="empty">Bu cihazda yer kalmadı ya da kayıt kapalı. Sohbetlerin bir kısmı yalnız sayfa açıkken duruyor.</div>');
-    const n = favs.stops.length + favs.lines.length + favs.pharmacies.length;
-    const badge = document.getElementById("fav-count"); badge.hidden = !n; badge.textContent = n;
+    document.getElementById("chat-total").textContent = chats.length || "";
+    let last = "";
+    document.getElementById("chat-list").innerHTML = (storeOk ? "" :
+      '<div class="empty">Bu cihazda yer kalmadı ya da kayıt kapalı. Sohbetlerin bir kısmı yalnız sayfa açıkken duruyor.</div>') +
+      (chats.length ? chats.map((c, i) => {
+        const g = dayLabel(c.at), head = g !== last ? '<div class="group">' + g + "</div>" : ""; last = g;
+        const on = c.id === chatId;
+        return head + '<div class="row' + (on ? " on" : "") + '"><button class="row-go" type="button" data-chat="' + i + '"' +
+          (on ? ' aria-current="true"' : "") + ' title="' + esc(c.title) + '"><span class="t">' + esc(c.title) + "</span></button>" +
+          act(c.title + " sohbetini sil", "✕", 'data-delchat="' + i + '"') + "</div>";
+      }).join("") : '<div class="empty">Sorduğun sorular burada otomatik saklanır.</div>');
+    for (const b of drawerEl.querySelectorAll(".sec-head")) b.setAttribute("aria-expanded", !!ui[b.dataset.sec]);
+    const badge = document.getElementById("fav-count"); badge.hidden = !total; badge.textContent = total;
   }
   drawerEl.addEventListener("click", e => {
-    const t = e.target.closest("button"); if (!t) return;
+    const t = e.target.closest("button"); if (!t || !drawerEl.contains(t)) return;
+    if (t.dataset.sec) { ui[t.dataset.sec] = !ui[t.dataset.sec]; saveUi(); drawDrawer(); t.focus(); return; }
+    if (t.dataset.tab) { ui.tab = t.dataset.tab; ui.all = false; saveUi(); drawDrawer();
+      drawerEl.querySelector('[data-tab="' + ui.tab + '"]')?.focus(); return; }
+    if ("more" in t.dataset) { ui.all = !ui.all; drawDrawer(); return; }
+    if (t.dataset.wipe) { wipe(t.dataset.wipe); return; }
     if (t.dataset.del) {
       favs = loadFavs(); favs[t.dataset.del].splice(+t.dataset.i, 1); store.set("favs", favs);
       drawDrawer(); drawHomeFavs(); refreshStars(); focusPanel();
@@ -698,18 +778,31 @@
       if (gone && gone.id === chatId) newChat();  // açık sohbet silindiyse tekrar kaydedilmesin
     }
   });
-  document.getElementById("new-chat").addEventListener("click", () => { openDrawer(false); newChat(); });
-  document.getElementById("wipe").addEventListener("click", () => {
-    if (!confirm("Bu cihazdaki tüm favoriler ve sohbetler silinsin mi? Bu geri alınamaz.")) return;
-    store.wipe(); storeOk = true; favs = { stops: [], lines: [], pharmacies: [] }; chatId = null; drawDrawer(); newChat();
+  document.getElementById("fav-tabs").addEventListener("keydown", e => {
+    if (e.key !== "ArrowRight" && e.key !== "ArrowLeft") return;
+    const ks = Object.keys(KINDS), i = ks.indexOf(e.target.dataset.tab); if (i < 0) return;
+    ui.tab = ks[(i + (e.key === "ArrowRight" ? 1 : ks.length - 1)) % ks.length]; ui.all = false; saveUi(); drawDrawer();
+    drawerEl.querySelector('[data-tab="' + ui.tab + '"]')?.focus(); e.preventDefault();
   });
+  document.getElementById("new-chat").addEventListener("click", () => { openDrawer(false); newChat(); });
+  // Kayıtları ayrı ayrı silebilme: yalnız sohbetler, yalnız favoriler ya da hepsi.
+  function wipe(what) {
+    const msg = { chats: "Bu cihazdaki tüm sohbetler silinsin mi?", favs: "Bu cihazdaki tüm favoriler silinsin mi?",
+      all: "Bu cihazdaki tüm sohbetler ve favoriler silinsin mi?" }[what];
+    if (!msg || !confirm(msg + " Bu geri alınamaz.")) return;
+    if (what === "all") store.wipe(); else store.del(what);
+    if (what !== "chats") { favs = { stops: [], lines: [], pharmacies: [] }; refreshStars(); }
+    if (what !== "favs") { storeOk = true; newChat(); }
+    document.getElementById("manage").open = false;
+    drawDrawer(); drawHomeFavs(); focusPanel();
+  }
 
   // Sohbet kaydı: her cevaptan sonra bu cihazda güncellenir. Canlı harita jetonu saklanmaz.
   let chatId = null, transcript = [], storeOk = true, gen = 0;
   function saveChat() {
     if (!transcript.length) return;
     const chats = loadChats();
-    if (!chatId) chatId = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+    if (!chatId) { chatId = Date.now().toString(36) + Math.random().toString(36).slice(2, 6); cur.set(chatId); }
     const prev = chats.find(c => c.id === chatId);
     const entry = { id: chatId, title: prev ? prev.title : transcript[0].content.slice(0, 60), at: Date.now(),
       msgs: transcript.slice(-CHAT_MSGS) };
@@ -725,12 +818,12 @@
     if (liveTimer) { clearInterval(liveTimer); liveTimer = null; }
   }
   function newChat() {
-    gen++; busy = false; send.disabled = false; stopLive(); history.length = 0; transcript = []; chatId = null;
+    gen++; busy = false; send.disabled = false; stopLive(); history.length = 0; transcript = []; chatId = null; cur.set(null);
     log.innerHTML = ""; log.appendChild(welcomeTpl.cloneNode(true)); drawHomeFavs(); drawDrawer(); q.focus();
   }
   function openChat(c) {
     if (!c) return;
-    gen++; busy = false; send.disabled = false; stopLive(); history.length = 0; transcript = c.msgs.slice(); chatId = c.id; drawDrawer();
+    gen++; busy = false; send.disabled = false; stopLive(); history.length = 0; transcript = c.msgs.slice(); chatId = c.id; cur.set(c.id); drawDrawer();
     log.innerHTML = "";
     for (const m of c.msgs) {
       history.push({ role: m.role, content: m.content });
@@ -750,7 +843,7 @@
   function drawHomeFavs() {
     const w = log.querySelector(".welcome"); if (!w) return;
     w.querySelector(".favs-home")?.remove();
-    const items = [...favs.stops.map(f => ["stops", f]), ...favs.lines.map(f => ["lines", f])].slice(0, 8);
+    const items = [...favs.stops.map(f => ["stops", f]), ...favs.lines.map(f => ["lines", f])].slice(0, 6);
     if (!items.length) return;
     const box = document.createElement("div"); box.className = "favs-home";
     box.innerHTML = "<h3>⭐ Favorilerin</h3><div class=\"chips-row\">" + items.map(([k, f]) =>
@@ -825,6 +918,7 @@
     ask(b.dataset.q || b.textContent);
   });
   drawDrawer(); drawHomeFavs();
+  { const id = cur.get(), c = id && loadChats().find(x => x.id === id); if (c) openChat(c); }
 })();
 </script>
 </body>

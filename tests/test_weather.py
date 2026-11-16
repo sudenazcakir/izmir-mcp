@@ -79,6 +79,14 @@ async def test_weather_down_returns_error(wx):
     assert r.error is not None and r.periods == []
 
 
+@pytest.mark.parametrize("status,code", [(400, "bad_response"), (429, "source_unavailable")])
+async def test_weather_4xx_says_why(wx, status, code, caplog):
+    wx.routes[FORECAST] = (status, {"error": True, "reason": "Cannot initialize WeatherVariable from invalid String value"})
+    r = await tools.get_weather("Bornova")
+    assert r.error is not None and r.error.code == code and str(status) in r.error.message
+    assert "Cannot initialize" in caplog.text  # nedeni Render loglarında görünsün
+
+
 async def test_unknown_district(wx):
     r = await tools.get_weather("Narnia")
     assert r.error is not None and r.error.code == "invalid_input"
