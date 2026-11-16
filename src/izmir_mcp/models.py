@@ -11,7 +11,7 @@ from pydantic import BaseModel, Field
 
 
 class ErrorCode(StrEnum):
-    SOURCE_UNAVAILABLE = "source_unavailable"  # kaynak cevap vermedi / 5xx / bağlantı koptu
+    SOURCE_UNAVAILABLE = "source_unavailable"  # kaynak cevap vermedi / 5xx / 429 / bağlantı koptu
     TIMEOUT = "timeout"
     NOT_FOUND = "not_found"  # durak/ilçe bulunamadı
     INVALID_INPUT = "invalid_input"
