@@ -132,7 +132,8 @@
     .drawer { width: 288px; transform: none; visibility: visible; box-shadow: none; transition: none;
       background: color-mix(in srgb, var(--solid) 82%, var(--bg)); }
     .scrim, #open-drawer, #close-drawer { display: none; }
-    header .logo, header h1 { display: none; }
+    header .logo { display: none; }
+    header h1 { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
     /* ad, logo ve favoriler zaten kenar çubuğunda; ana ekranda tekrar gösterilmez */
     .welcome .favs-home { display: none; }
     header p { font-size: 13.5px; }
@@ -783,7 +784,9 @@
       (drawerEl.querySelector("#fav-list .row-go") || document.getElementById("new-chat")).focus();
     }
     else if (t.dataset.ask) { const f = favs[t.dataset.ask][+t.dataset.i]; openDrawer(false); newChat(); ask(askFor[t.dataset.ask](f)); }
-    else if (t.dataset.chat) { openDrawer(false); openChat(loadChats()[+t.dataset.chat]); if (wide.matches) q.focus(); }
+    else if (t.dataset.chat) { const c = loadChats()[+t.dataset.chat]; openDrawer(false);
+      // Zaten açık olan sohbete basınca yeniden açma: bekleyen cevap kaybolmasın.
+      if (c && c.id !== chatId) openChat(c); if (wide.matches) q.focus(); }
     else if (t.dataset.delchat) {
       const chats = loadChats(); const [gone] = chats.splice(+t.dataset.delchat, 1); store.set("chats", chats);
       drawDrawer(); focusPanel();
