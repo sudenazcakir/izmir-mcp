@@ -1,5 +1,6 @@
 """ESHOT canlı otobüs verisi (openapi.izmir.bel.tr, anahtarsız)."""
 
+import time
 from typing import Any
 
 from ..config import get_settings
@@ -10,11 +11,36 @@ SOURCE = "ESHOT"
 SOURCE_STOPS = "İBB CBS (yakın duraklar)"
 
 
+ARRIVALS_TTL = 10.0  # aynı durak için ESHOT'a en fazla 10 sn'de bir gidilir (sohbet + canlı harita ortak)
+_ARRIVALS_MAX = 2000
+_arrivals_cache: dict[str, tuple[float, list[dict[str, Any]]]] = {}
+
+
+def arrivals_fresh(stop_id: str) -> bool:
+    hit = _arrivals_cache.get(stop_id)
+    return hit is not None and time.monotonic() - hit[0] < ARRIVALS_TTL
+
+
+def clear_arrivals_cache() -> None:
+    _arrivals_cache.clear()
+
+
 async def approaching_buses(stop_id: str) -> list[dict[str, Any]]:
     """Durağa yaklaşan otobüsler. Alanlar: HatNumarasi, HatAdi, KalanDurakSayisi, KoorX(enlem), KoorY(boylam)…"""
+    hit = _arrivals_cache.get(stop_id)
+    if hit is not None and time.monotonic() - hit[0] < ARRIVALS_TTL:
+        return hit[1]
     base = get_settings().izmir_api_base
     data = await get_json(f"{base}/api/iztek/duragayaklasanotobusler/{stop_id}", source=SOURCE)
-    return data if isinstance(data, list) else []
+    result = data if isinstance(data, list) else []
+    if len(_arrivals_cache) >= _ARRIVALS_MAX:
+        now = time.monotonic()
+        for k in [k for k, (t, _) in _arrivals_cache.items() if now - t >= ARRIVALS_TTL]:
+            del _arrivals_cache[k]
+        if len(_arrivals_cache) >= _ARRIVALS_MAX:
+            _arrivals_cache.clear()
+    _arrivals_cache[stop_id] = (time.monotonic(), result)
+    return result
 
 
 async def nearby_stops(lat: float, lon: float) -> list[dict[str, Any]]:

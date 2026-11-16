@@ -9,6 +9,7 @@ from izmir_mcp.config import Settings
 from izmir_mcp.web import (
     MAX_HISTORY_CHARS,
     MCP_BETA,
+    LiveSigner,
     RateLimiter,
     clean_history,
     client_ip,
@@ -357,8 +358,9 @@ def test_live_payload_rejects_errors():
     assert live_payload({**ARRIVALS, "stops": []}) is None
 
 
-def test_live_endpoint_refreshes_from_eshot_and_caches(monkeypatch):
+def live_app(monkeypatch, *, budget=None):
     from izmir_mcp import tools as tools_mod
+    from izmir_mcp import web
     from izmir_mcp.models import StopArrivals
 
     calls = []
@@ -368,13 +370,62 @@ def test_live_endpoint_refreshes_from_eshot_and_caches(monkeypatch):
         return StopArrivals.model_validate({**ARRIVALS, "stops": [s.model_dump() for s in stops]})
 
     monkeypatch.setattr(tools_mod, "arrivals_for_stops", fake_arrivals)
-    client, msgs = fake_client()
-    body = {"stops": [{"id": "30005", "name": "Bornova Metro", "lat": 38.4577, "lon": 27.2125}]}
-    with TestClient(create_app(settings(), client)) as tc:
-        r1 = tc.post("/api/live", json=body)
-        r2 = tc.post("/api/live", json=body)
-        bad = tc.post("/api/live", json={"stops": [{"id": "../etc"}]})
-    assert r1.status_code == 200 and r1.json()["buses"][0]["line"] == "505"
-    assert r2.json() == r1.json() and calls == [["30005"]]  # ikinci istek önbellekten
-    assert bad.status_code == 400
-    assert msgs.calls == []  # canlı yenileme Claude'a gitmez
+    if budget is not None:
+        monkeypatch.setattr(web, "LIVE_UPSTREAM_BUDGET", budget)
+    client, msgs = fake_client(*[reply(tool_use("get_stop_arrivals"), tool_result(ARRIVALS), text("ok"))
+                                 for _ in range(3)])
+    return create_app(settings(), client), calls, msgs
+
+
+def test_live_needs_token_from_chat(monkeypatch):
+    app, calls, msgs = live_app(monkeypatch)
+    with TestClient(app) as tc:
+        chat = tc.post("/api/chat", json={"messages": [{"role": "user", "content": "Bornova Metro"}]}).json()
+        token = chat["live"]["token"]
+        ok = tc.post("/api/live", json={"token": token})
+        raw = tc.post("/api/live", json={"stops": [{"id": "30005"}]})  # eski biçim: imzasız durak listesi
+        forged = tc.post("/api/live", json={"token": token[:-3] + "AAA"})
+        other = LiveSigner(b"x" * 32).sign([{"id": "40010", "name": None, "lat": None, "lon": None}])
+        foreign = tc.post("/api/live", json={"token": other})
+    assert ok.status_code == 200 and ok.json()["buses"][0]["line"] == "505"
+    assert raw.status_code == forged.status_code == foreign.status_code == 403
+    assert calls == [["30005"]]  # yalnız imzalı istek ESHOT'a gitti
+    assert len(msgs.calls) == 1  # canlı yenileme Claude'a gitmez
+
+
+def test_live_token_expires():
+    signer = LiveSigner(b"k" * 32)
+    token = signer.sign([{"id": "30005", "name": "B", "lat": 38.45, "lon": 27.21}], now=1000)
+    assert signer.verify(token, now=1000 + 60)[0]["id"] == "30005"
+    assert signer.verify(token, now=1000 + 12 * 60) is None
+    assert signer.verify("garbage") is None and signer.verify(None) is None
+
+
+def test_live_upstream_budget_is_shared(monkeypatch):
+    from izmir_mcp.sources import eshot
+
+    eshot.clear_arrivals_cache()
+    app, calls, _ = live_app(monkeypatch, budget=1)
+    with TestClient(app) as tc:
+        token = tc.post("/api/chat", json={"messages": [{"role": "user", "content": "x"}]}).json()["live"]["token"]
+        first = tc.post("/api/live", json={"token": token})
+        second = tc.post("/api/live", json={"token": token}, headers={"X-Forwarded-For": "203.0.113.9"})
+    assert first.status_code == 200
+    assert second.status_code == 503 and len(calls) == 1  # bütçe bitti, ESHOT'a gidilmedi
+
+
+def test_leaflet_is_served_locally_with_csp():
+    import hashlib
+
+    with TestClient(create_app(settings(), fake_client()[0])) as tc:
+        page = tc.get("/")
+        js = tc.get("/static/vendor/leaflet/leaflet.js")
+        css = tc.get("/static/vendor/leaflet/leaflet.css")
+        missing = tc.get("/static/vendor/leaflet/../web.py")
+    csp = page.headers["content-security-policy"]
+    assert "script-src 'self' 'unsafe-inline'" in csp and "cdnjs" not in page.text
+    assert "/static/vendor/leaflet/" in page.text
+    assert hashlib.sha256(js.content).hexdigest() == "db49d009c841f5ca34a888c96511ae936fd9f5533e90d8b2c4d57596f4e5641a"
+    assert hashlib.sha256(css.content).hexdigest() == "a7837102824184820dfa198d1ebcd109ff6d0ff9a2672a074b9a1b4d147d04c6"
+    assert js.headers["x-content-type-options"] == "nosniff"
+    assert missing.status_code == 404

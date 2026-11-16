@@ -162,7 +162,7 @@
 </form>
 <script>
 (() => {
-  const LEAFLET = "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/";
+  const LEAFLET = "/static/vendor/leaflet/";  // kendi sunucumuzdan; dış CDN yok (bkz. vendor/leaflet/README.md)
   let userLoc = null;  // {lat, lon}; yalnız bu sayfada tutulur, kaydedilmez
   let leafletReady = null;
 
@@ -198,10 +198,10 @@
     if (leafletReady) return leafletReady;
     leafletReady = new Promise((ok, fail) => {
       const css = document.createElement("link");
-      css.rel = "stylesheet"; css.href = LEAFLET + "leaflet.min.css";
+      css.rel = "stylesheet"; css.href = LEAFLET + "leaflet.css";
       document.head.appendChild(css);
       const js = document.createElement("script");
-      js.src = LEAFLET + "leaflet.min.js"; js.onload = ok; js.onerror = fail;
+      js.src = LEAFLET + "leaflet.js"; js.onload = ok; js.onerror = fail;
       document.head.appendChild(js);
     });
     return leafletReady;
@@ -316,7 +316,11 @@
       }
       try {
         const res = await fetch("/api/live", { method: "POST", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ stops: live.stops }) });
+          body: JSON.stringify({ token: live.token }) });
+        if (res.status === 403) {
+          clearInterval(liveTimer); liveTimer = null; status.classList.add("off");
+          status.lastChild.textContent = " Canlı takip süresi doldu. Güncel durum için tekrar sor."; return;
+        }
         if (!res.ok) throw new Error();
         buses = (await res.json()).buses || [];
         drawRows(); drawBuses(false);
@@ -324,7 +328,7 @@
         status.lastChild.textContent = " Canlı · son güncelleme " + new Date().toLocaleTimeString("tr-TR");
       } catch { status.classList.add("off"); status.lastChild.textContent = " Güncellenemedi, tekrar denenecek…"; }
     }
-    liveTimer = setInterval(refresh, LIVE_EVERY);
+    if (live.token) liveTimer = setInterval(refresh, LIVE_EVERY);
   }
 
   function renderPlaces(el, raw, origin) {

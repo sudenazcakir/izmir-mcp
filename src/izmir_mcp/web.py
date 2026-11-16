@@ -13,6 +13,8 @@ Not: Claude API sunucumuza internetten bağlanır, bu yüzden /api/chat yalnızc
 
 from __future__ import annotations
 
+import base64
+import hashlib
 import hmac
 import json
 import logging
@@ -33,6 +35,7 @@ from . import tools
 from .config import Settings, get_settings
 from .models import StopRef
 from .server import mcp
+from .sources import eshot
 
 log = logging.getLogger(__name__)
 
@@ -51,8 +54,11 @@ TRIP_TOOL = "get_transit_directions"
 LIVE_TOOL = "get_stop_arrivals"
 MAX_LIVE_STOPS = 10
 MAX_LIVE_BUSES = 12
-LIVE_CACHE_SECONDS = 10  # aynı duraklar için ESHOT'a 10 sn'de bir gidilir, kaç kişi izlerse izlesin
-LIVE_RATE_LIMIT = 120  # canlı harita yenilemesi (15 sn'de bir) için IP başına 10 dakikada
+LIVE_RATE_LIMIT = 60  # canlı harita yenilemesi (15 sn'de bir, 10 dk) için IP başına 10 dakikada
+LIVE_TOKEN_SECONDS = 11 * 60  # sayfa 10 dk sonra yenilemeyi bırakıyor
+# Canlı harita yenilemelerinin ESHOT'a yapabileceği toplam durak isteği (10 dakikada, tüm kullanıcılar).
+# Önbellekte taze olan duraklar sayılmaz. Bütçe dolunca harita "yoğun" der; sohbet ve diğer araçlar etkilenmez.
+LIVE_UPSTREAM_BUDGET = 1200
 # İzmir ili ve çevresi; bunun dışındaki konumlar yok sayılır (yanlış/sahte koordinata karşı).
 IZMIR_BBOX = (37.6, 39.6, 25.8, 28.7)  # min_lat, max_lat, min_lon, max_lon
 
@@ -94,6 +100,26 @@ LOCATION_NOTE = (
     "Kullanıcı konumunu paylaştı: enlem {lat:.5f}, boylam {lon:.5f}. \"yakınımdaki\", \"en yakın\" gibi sorularda "
     "ve ilçe söylenmediğinde araçlara bu lat/lon değerlerini ver; uzaklıkları kullanıcıya göre söyle."
 )
+
+
+# Sayfa yalnız kendi kaynağımızdan script çalıştırır; harita karoları OpenStreetMap'ten gelir.
+CSP = "; ".join([
+    "default-src 'self'",
+    "script-src 'self' 'unsafe-inline'",  # sayfadaki tek satır içi script bizim; dış script yok
+    "style-src 'self' 'unsafe-inline'",  # Leaflet konumlandırma için satır içi stil kullanıyor
+    "img-src 'self' data: https://tile.openstreetmap.org",
+    "connect-src 'self'",
+    "object-src 'none'",
+    "base-uri 'none'",
+    "frame-ancestors 'none'",
+    "form-action 'self'",
+])
+PAGE_HEADERS = {
+    "Content-Security-Policy": CSP,
+    "X-Content-Type-Options": "nosniff",
+    "Referrer-Policy": "no-referrer",
+    "Permissions-Policy": "geolocation=(self), camera=(), microphone=()",
+}
 
 
 class McpKeyMiddleware:
@@ -158,6 +184,23 @@ class RateLimiter:
             q = self.hits[key] = deque()
         q.append(now)
         self.all_hits.append(now)
+        return True
+
+
+class Budget:
+    """Pencere başına toplam N birim (ör. ESHOT durak isteği). Ya hepsi ya hiç."""
+
+    def __init__(self, limit: int, window: float = RATE_WINDOW_SECONDS):
+        self.limit, self.window = limit, window
+        self.used: deque[float] = deque()
+
+    def take(self, n: int) -> bool:
+        now = time.monotonic()
+        while self.used and now - self.used[0] >= self.window:
+            self.used.popleft()
+        if len(self.used) + n > self.limit:
+            return False
+        self.used.extend([now] * n)
         return True
 
 
@@ -301,6 +344,46 @@ def live_payload(data: Any) -> dict[str, Any] | None:
     return {"stops": stops, "buses": buses}
 
 
+class LiveSigner:
+    """Canlı harita jetonu: sohbet cevabındaki durak listesini imzalar.
+
+    /api/live yalnız bu jetonla çalışır; böylece uç, gelişigüzel durak listeleriyle ESHOT'a açık bir aracıya
+    dönüşmez. Jeton, Claude'dan geçmiş (ve sohbet limitine takılan) bir cevaptan gelmek zorunda.
+    """
+
+    def __init__(self, secret: bytes):
+        self.secret = secret
+
+    def _sig(self, body: bytes) -> str:
+        return base64.urlsafe_b64encode(hmac.new(self.secret, body, hashlib.sha256).digest()[:18]).decode()
+
+    def sign(self, stops: list[dict[str, Any]], now: float | None = None) -> str:
+        exp = int((now if now is not None else time.time()) + LIVE_TOKEN_SECONDS)
+        body = json.dumps({"s": stops, "e": exp}, separators=(",", ":"), ensure_ascii=False).encode()
+        return base64.urlsafe_b64encode(body).decode().rstrip("=") + "." + self._sig(body)
+
+    def verify(self, token: Any, now: float | None = None) -> list[dict[str, Any]] | None:
+        if not isinstance(token, str) or len(token) > 4000 or "." not in token:
+            return None
+        b64, sig = token.rsplit(".", 1)
+        try:
+            body = base64.urlsafe_b64decode(b64 + "=" * (-len(b64) % 4))
+        except ValueError:
+            return None
+        if not hmac.compare_digest(sig, self._sig(body)):
+            return None
+        try:
+            data = json.loads(body)
+        except ValueError:
+            return None
+        if not isinstance(data, dict) or not isinstance(data.get("e"), int):
+            return None
+        if data["e"] < (now if now is not None else time.time()):
+            return None
+        stops = clean_stops(data.get("s"))
+        return stops or None
+
+
 def extract_live(text: str) -> dict[str, Any] | None:
     try:
         return live_payload(json.loads(text))
@@ -398,14 +481,28 @@ def create_app(settings: Settings | None = None, client: anthropic.AsyncAnthropi
         client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key, max_retries=2, timeout=60)
     limiter = RateLimiter(settings.chat_rate_limit, settings.chat_global_rate_limit)
     live_limiter = RateLimiter(LIVE_RATE_LIMIT, LIVE_RATE_LIMIT * 50)
-    live_cache: dict[tuple[str, ...], tuple[float, dict[str, Any]]] = {}
+    upstream = Budget(LIVE_UPSTREAM_BUDGET)  # tüm kullanıcılar ortak
+    # Jeton anahtarı süreç başına rastgele: yeniden başlatmada eski jetonlar düşer (harita "tekrar sor" der).
+    signer = LiveSigner(os.urandom(32))
     public = bool(settings.public_base_url or settings.render_external_url)
     if public and not settings.mcp_api_key:
         log.error("MCP_API_KEY ayarlı değil: herkese açık ortamda /mcp kapalı (503). Render'da MCP_API_KEY gir.")
-    page = resources.files("izmir_mcp").joinpath("static/index.html").read_text("utf-8")
+    static = resources.files("izmir_mcp").joinpath("static")
+    page = static.joinpath("index.html").read_text("utf-8")
+    vendor = {  # yalnız bu dosyalar servis edilir (yol gezinmesi yok)
+        "leaflet.js": ("application/javascript", static.joinpath("vendor/leaflet/leaflet.js").read_bytes()),
+        "leaflet.css": ("text/css", static.joinpath("vendor/leaflet/leaflet.css").read_bytes()),
+    }
 
     async def index(_: Request) -> Response:
-        return HTMLResponse(page)
+        return HTMLResponse(page, headers=PAGE_HEADERS)
+
+    async def leaflet_file(request: Request) -> Response:
+        item = vendor.get(request.path_params["name"])
+        if item is None:
+            return Response("Not Found", status_code=404)
+        return Response(item[1], media_type=item[0], headers={
+            "Cache-Control": "public, max-age=86400", "X-Content-Type-Options": "nosniff"})
 
     async def health(_: Request) -> Response:
         return JSONResponse({"ok": True, "chat": bool(client and settings.mcp_public_url)})
@@ -426,7 +523,10 @@ def create_app(settings: Settings | None = None, client: anthropic.AsyncAnthropi
             return JSONResponse({"error": f"Geçersiz istek (soru en fazla {MAX_QUESTION_CHARS} karakter)."}, status_code=400)
         location = parse_location(body.get("location")) if isinstance(body, dict) else None
         try:
-            return JSONResponse(await ask_claude(client, settings, history, location))
+            result = await ask_claude(client, settings, history, location)
+            if result.get("live"):
+                result["live"]["token"] = signer.sign(result["live"]["stops"])
+            return JSONResponse(result)
         except anthropic.RateLimitError:
             return JSONResponse({"error": "Asistan şu an çok yoğun, biraz sonra tekrar dene."}, status_code=503)
         except anthropic.APIStatusError as e:
@@ -440,21 +540,21 @@ def create_app(settings: Settings | None = None, client: anthropic.AsyncAnthropi
             return JSONResponse({"error": "Beklenmeyen bir sorun oluştu, tekrar dener misin?"}, status_code=500)
 
     async def live(request: Request) -> Response:
-        """Canlı harita yenilemesi: Claude'a gitmez, doğrudan ESHOT'tan (10 sn önbellekli) okur."""
+        """Canlı harita yenilemesi: Claude'a gitmez. Yalnız sohbetin imzaladığı duraklar, durak başına 10 sn
+        önbellekle ve tüm kullanıcılar için ortak bir ESHOT istek bütçesiyle okunur."""
         if not live_limiter.allow(client_ip(request)):
             return JSONResponse({"error": "Çok sık yenilendi, biraz bekle."}, status_code=429)
         try:
             body = await request.json()
         except ValueError:
             body = None
-        stops = clean_stops(body.get("stops") if isinstance(body, dict) else None)
+        stops = signer.verify(body.get("token") if isinstance(body, dict) else None)
         if not stops:
-            return JSONResponse({"error": "Durak bilgisi eksik."}, status_code=400)
-        key = tuple(sorted(st["id"] for st in stops))
-        now = time.monotonic()
-        hit = live_cache.get(key)
-        if hit and now - hit[0] < LIVE_CACHE_SECONDS:
-            return JSONResponse(hit[1])
+            return JSONResponse({"error": "Canlı takip süresi doldu, tekrar sor."}, status_code=403)
+        need = sum(1 for st in stops if not eshot.arrivals_fresh(st["id"]))
+        if need and not upstream.take(need):
+            return JSONResponse({"error": "Canlı harita şu an çok yoğun, biraz sonra tekrar denenecek."},
+                                status_code=503)
         refs = [StopRef(**st) for st in stops]
         try:
             result = await tools.arrivals_for_stops("canlı harita", refs, [], MAX_LIVE_BUSES)
@@ -464,10 +564,7 @@ def create_app(settings: Settings | None = None, client: anthropic.AsyncAnthropi
         payload = live_payload(result.model_dump(mode="json"))
         if payload is None:
             return JSONResponse({"error": "ESHOT şu an cevap vermiyor."}, status_code=502)
-        if len(live_cache) > 500:
-            live_cache.clear()
-        live_cache[key] = (now, payload)
-        return JSONResponse(payload)
+        return JSONResponse({"buses": payload["buses"]})
 
     # MCP uygulaması kendi lifespan'ını (oturum yöneticisi) taşıyor; sayfa ve API yollarını ona ekliyoruz.
     app: Starlette = mcp.streamable_http_app(stateless_http=True, host="0.0.0.0")
@@ -475,6 +572,7 @@ def create_app(settings: Settings | None = None, client: anthropic.AsyncAnthropi
     app.add_route("/health", health, methods=["GET", "HEAD"])
     app.add_route("/api/chat", chat, methods=["POST"])
     app.add_route("/api/live", live, methods=["POST"])
+    app.add_route("/static/vendor/leaflet/{name}", leaflet_file, methods=["GET"])
     return McpKeyMiddleware(app, settings.mcp_api_key, public=public)
 
 
