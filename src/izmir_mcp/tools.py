@@ -201,7 +201,12 @@ async def find_pharmacies(district: str | None = None, on_duty: bool = True, lim
     try:
         items, cached, stale = await (pharmacy.on_duty_pharmacies() if on_duty else pharmacy.all_pharmacies())
     except SourceFailure as f:
-        return PharmacyResult(district=d.name if d else None, on_duty=on_duty, meta=meta, error=f.error)
+        error = f.error
+        if on_duty and error.hint is None:
+            error = error.model_copy(update={"hint": (
+                "Bugünün nöbet listesi alınamadı. Önceki günün listesi bugün geçerli olmadığı için gösterilmiyor; "
+                "kullanıcıyı eczane kapılarındaki nöbet listesine ya da İzmir Eczacı Odası'na yönlendir.")})
+        return PharmacyResult(district=d.name if d else None, on_duty=on_duty, meta=meta, error=error)
 
     ref_lat, ref_lon = (lat, lon) if lat is not None and lon is not None else (d.lat, d.lon)
     for p in items:
