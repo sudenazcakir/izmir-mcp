@@ -83,7 +83,7 @@ def test_page_and_health():
     client, _ = fake_client()
     with TestClient(create_app(settings(), client)) as tc:
         page = tc.get("/")
-        assert page.status_code == 200 and "İzmir Asistanı" in page.text
+        assert page.status_code == 200 and "CityMate" in page.text
         assert tc.get("/health").json() == {"ok": True, "chat": True}
 
 
