@@ -356,7 +356,8 @@
       (t.straight_km != null ? ' <span class="map-note">· kuş uçuşu ' + esc(fmtKm(t.straight_km)) + "</span>" : "") +
       "</div></div>" + (chips ? '<div class="chips">' + chips + "</div>" : "") +
       '<div class="map" role="img" aria-label="Başlangıç ve varış haritası"></div>' +
-      '<a class="go" href="' + esc(t.maps_url) + '" target="_blank" rel="noopener">🚍 Toplu taşıma seçeneklerini karşılaştır</a>' +
+      (str(t.maps_url) && t.maps_url.startsWith("https://www.google.com/maps/")
+        ? '<a class="go" href="' + esc(t.maps_url) + '" target="_blank" rel="noopener">🚍 Toplu taşıma seçeneklerini karşılaştır</a>' : "") +
       '<div class="map-note">Google Haritalar seçenekleri sürelerine göre sıralar, en hızlısı en üstte.</div>';
     el.appendChild(box);
     const mapEl = box.querySelector(".map");
@@ -526,16 +527,41 @@
   const welcomeTpl = document.getElementById("welcome").cloneNode(true);
 
   // ---- Cihazda saklama (localStorage). Hesap yok, sunucuya gönderilmez. Erişilemezse sessizce bellekte kalır.
-  const mem = {};
+  const mem = {}, unsaved = new Set();
   const store = {
-    // Bellekteki kopya her zaman en günceldir; yazma başarısız olsa bile (kota dolu, gizli sekme) oturum boyunca kaybolmaz.
-    get(k, d) { if (k in mem) return mem[k]; try { const v = localStorage.getItem("izm:" + k); return v ? JSON.parse(v) : d; } catch { return d; } },
-    set(k, v) { mem[k] = v; try { localStorage.setItem("izm:" + k, JSON.stringify(v)); return true; } catch { return false; } },
-    wipe() { for (const k of Object.keys(mem)) delete mem[k];
+    // Önce localStorage okunur (başka sekmenin yazdıkları da görünsün). Son yazması başarısız olan anahtar için
+    // (kota dolu, gizli sekme) bellekteki kopya kullanılır, böylece oturum boyunca kaybolmaz.
+    get(k, d) {
+      if (unsaved.has(k)) return mem[k];
+      try { const v = localStorage.getItem("izm:" + k); if (v != null) return JSON.parse(v); } catch {}
+      return k in mem ? mem[k] : d;
+    },
+    set(k, v) {
+      mem[k] = v;
+      try { localStorage.setItem("izm:" + k, JSON.stringify(v)); unsaved.delete(k); return true; }
+      catch { unsaved.add(k); return false; }
+    },
+    wipe() { unsaved.clear(); for (const k of Object.keys(mem)) delete mem[k];
       try { Object.keys(localStorage).filter(k => k.startsWith("izm:")).forEach(k => localStorage.removeItem(k)); } catch {} },
   };
   const FAV_MAX = 30, CHAT_MAX = 20, CHAT_MSGS = 40;
-  let favs = Object.assign({ stops: [], lines: [], pharmacies: [] }, store.get("favs", {}));
+  // Saklanan veri elle ya da eski bir sürümle bozulmuş olabilir: biçimi tutmayan kayıtlar atlanır.
+  const str = v => typeof v === "string", num = v => typeof v === "number" && isFinite(v);
+  function loadFavs() {
+    const o = store.get("favs", {}), out = {};
+    for (const kind of ["stops", "lines", "pharmacies"]) {
+      out[kind] = (o && Array.isArray(o[kind]) ? o[kind] : []).filter(f => f && str(f.key)).slice(0, FAV_MAX).map(f =>
+        ({ key: f.key, name: str(f.name) ? f.name : null, address: str(f.address) ? f.address : null,
+           phone: str(f.phone) ? f.phone : null, lat: num(f.lat) ? f.lat : null, lon: num(f.lon) ? f.lon : null }));
+    }
+    return out;
+  }
+  function loadChats() {
+    const a = store.get("chats", []);
+    return (Array.isArray(a) ? a : []).filter(c => c && str(c.id) && str(c.title) && num(c.at) && Array.isArray(c.msgs) &&
+      c.msgs.every(m => m && (m.role === "user" || m.role === "assistant") && str(m.content)));
+  }
+  let favs = loadFavs();
   const isFav = (kind, key) => favs[kind].some(f => f.key === key);
   function starBtn(kind, key, extra) {
     const on = isFav(kind, key);
@@ -546,16 +572,23 @@
       '" aria-pressed="' + on + '">' + (on ? "★ Kayıtlı" : "☆ Kaydet") + "</button>";
   }
   function toggleFav(kind, item) {
+    favs = loadFavs();
     const i = favs[kind].findIndex(f => f.key === item.key);
     if (i >= 0) favs[kind].splice(i, 1); else favs[kind] = [item, ...favs[kind]].slice(0, FAV_MAX);
-    store.set("favs", favs); drawDrawer(); drawHomeFavs();
-    document.querySelectorAll('.star[data-kind="' + kind + '"]').forEach(b => {
+    store.set("favs", favs); drawDrawer(); drawHomeFavs(); refreshStars();
+  }
+  function refreshStars() {
+    document.querySelectorAll(".star[data-kind]").forEach(b => {
       let k; try { k = JSON.parse(decodeURIComponent(b.dataset.fav)).key; } catch { return; }
-      if (k !== item.key) return;
-      const on = isFav(kind, k); b.classList.toggle("on", on); b.setAttribute("aria-pressed", on);
+      const on = isFav(b.dataset.kind, k); b.classList.toggle("on", on); b.setAttribute("aria-pressed", on);
       b.textContent = on ? "★ Kayıtlı" : "☆ Kaydet";
     });
   }
+  // Başka sekmede değişince bu sekme de güncellensin, birbirinin üstüne yazmasın.
+  window.addEventListener("storage", e => {
+    if (e.key === "izm:favs" || e.key === null) { favs = loadFavs(); drawHomeFavs(); refreshStars(); }
+    if (e.key && e.key.startsWith("izm:")) drawDrawer();
+  });
   document.addEventListener("click", e => {
     const b = e.target.closest(".star"); if (!b) return;
     try { toggleFav(b.dataset.kind, JSON.parse(decodeURIComponent(b.dataset.fav))); } catch {}
@@ -570,6 +603,7 @@
   function openDrawer(open) {
     const was = document.body.classList.contains("drawer-open");
     document.body.classList.toggle("drawer-open", open); drawerEl.setAttribute("aria-hidden", !open); drawerEl.inert = !open;
+    for (const el of document.querySelectorAll("body > header, body > main, body > form")) el.inert = open;
     if (open) { drawDrawer(); document.getElementById("close-drawer").focus(); }
     else if (was && drawerEl.contains(document.activeElement)) openBtn.focus();
   }
@@ -596,7 +630,7 @@
       document.getElementById("fav-" + kind).innerHTML = favs[kind].length
         ? favs[kind].map((f, i) => favRow(kind, f, i)).join("") : '<div class="empty">' + empty[kind] + "</div>";
     }
-    const chats = store.get("chats", []);
+    const chats = loadChats();
     document.getElementById("chat-list").innerHTML = chats.length ? chats.map((c, i) =>
       '<div class="chat-item"><button class="go" type="button" data-chat="' + i + '"><b>' + esc(c.title) + "</b><small>" +
       esc(new Date(c.at).toLocaleString("tr-TR", { dateStyle: "medium", timeStyle: "short" })) + " · " +
@@ -604,19 +638,22 @@
       '<button class="x" type="button" data-delchat="' + i + '" aria-label="Sil">✕</button></div>').join("")
       : '<div class="empty">Sorduğun sorular burada otomatik saklanır.</div>';
     if (!storeOk) document.getElementById("chat-list").insertAdjacentHTML("afterbegin",
-      '<div class="empty">Bu cihazda yer kalmadı ya da kayıt kapalı. Sohbetler yalnız sayfa açıkken duruyor.</div>');
+      '<div class="empty">Bu cihazda yer kalmadı ya da kayıt kapalı. Sohbetlerin bir kısmı yalnız sayfa açıkken duruyor.</div>');
     const n = favs.stops.length + favs.lines.length + favs.pharmacies.length;
     const badge = document.getElementById("fav-count"); badge.hidden = !n; badge.textContent = n;
   }
   drawerEl.addEventListener("click", e => {
     const t = e.target.closest("button"); if (!t) return;
-    if (t.dataset.del) { favs[t.dataset.del].splice(+t.dataset.i, 1); store.set("favs", favs); drawDrawer(); drawHomeFavs(); }
+    if (t.dataset.del) {
+      favs = loadFavs(); favs[t.dataset.del].splice(+t.dataset.i, 1); store.set("favs", favs);
+      drawDrawer(); drawHomeFavs(); refreshStars(); document.getElementById("close-drawer").focus();
+    }
     else if (t.dataset.ask) { const f = favs[t.dataset.ask][+t.dataset.i]; openDrawer(false); newChat(); ask(askFor[t.dataset.ask](f)); }
-    else if (t.dataset.chat) { openDrawer(false); openChat(store.get("chats", [])[+t.dataset.chat]); }
+    else if (t.dataset.chat) { openDrawer(false); openChat(loadChats()[+t.dataset.chat]); }
     else if (t.dataset.delchat) {
-      const chats = store.get("chats", []); const [gone] = chats.splice(+t.dataset.delchat, 1); store.set("chats", chats);
+      const chats = loadChats(); const [gone] = chats.splice(+t.dataset.delchat, 1); store.set("chats", chats);
       if (gone && gone.id === chatId) chatId = null;
-      drawDrawer();
+      drawDrawer(); document.getElementById("close-drawer").focus();
     }
   });
   document.getElementById("new-chat").addEventListener("click", () => { openDrawer(false); newChat(); });
@@ -629,30 +666,38 @@
   let chatId = null, transcript = [], storeOk = true, gen = 0;
   function saveChat() {
     if (!transcript.length) return;
-    const chats = store.get("chats", []);
+    const chats = loadChats();
     if (!chatId) chatId = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
-    const entry = { id: chatId, title: transcript[0].content.slice(0, 60), at: Date.now(), msgs: transcript.slice(-CHAT_MSGS) };
-    let list = [entry, ...chats.filter(c => c.id !== chatId)].slice(0, CHAT_MAX);
-    // Yer kalmadıysa en eski sohbetleri silerek yeniden dene.
-    while (!(storeOk = store.set("chats", list)) && list.length > 1) list = list.slice(0, -1);
+    const prev = chats.find(c => c.id === chatId);
+    const entry = { id: chatId, title: prev ? prev.title : transcript[0].content.slice(0, 60), at: Date.now(),
+      msgs: transcript.slice(-CHAT_MSGS) };
+    const list = [entry, ...chats.filter(c => c.id !== chatId)].slice(0, CHAT_MAX);
+    // Yer yetmezse cihaza en eski sohbetler olmadan yazılır; tam liste bu oturumda bellekte kalır.
+    let n = list.length;
+    while (!store.set("chats", list.slice(0, n)) && n > 1) n--;
+    storeOk = n === list.length && !unsaved.has("chats");
+    if (!storeOk) { mem.chats = list; unsaved.add("chats"); }
     drawDrawer();
   }
   function stopLive() {
     if (liveTimer) { clearInterval(liveTimer); liveTimer = null; }
   }
   function newChat() {
-    gen++; stopLive(); history.length = 0; transcript = []; chatId = null;
+    gen++; busy = false; send.disabled = false; stopLive(); history.length = 0; transcript = []; chatId = null;
     log.innerHTML = ""; log.appendChild(welcomeTpl.cloneNode(true)); drawHomeFavs(); q.focus();
   }
   function openChat(c) {
     if (!c) return;
-    gen++; stopLive(); history.length = 0; transcript = c.msgs.slice(); chatId = c.id; log.innerHTML = "";
+    gen++; busy = false; send.disabled = false; stopLive(); history.length = 0; transcript = c.msgs.slice(); chatId = c.id;
+    log.innerHTML = "";
     for (const m of c.msgs) {
       history.push({ role: m.role, content: m.content });
       if (m.role === "user") { add("user", esc(m.content)); continue; }
       const el = add("bot", fmt(m.content));
-      if (m.places && m.places.length) renderPlaces(el, m.places, null);
-      if (m.trip && m.trip.origin && m.trip.destination) renderTrip(el, m.trip);
+      try {
+        if (Array.isArray(m.places) && m.places.length) renderPlaces(el, m.places, null);
+        if (m.trip && m.trip.origin && m.trip.destination) renderTrip(el, m.trip);
+      } catch {}
       if (m.live) {
         const n = document.createElement("div"); n.className = "map-note";
         n.textContent = "🚌 Bu cevapta canlı otobüs haritası vardı. Güncel konumlar için soruyu tekrar sor.";
@@ -706,25 +751,30 @@
       if (myGen !== gen) return;  // kullanıcı bu arada başka sohbete geçti: cevabı oraya yazma
       if (!res.ok) throw new Error(data.error || "Bir sorun oluştu, tekrar dener misin?");
       history.push({ role: "assistant", content: data.answer });
-      transcript.push({ role: "user", content: text.trim() }, { role: "assistant", content: data.answer,
-        places: data.places || [], trip: data.trip || null, live: !!data.live });
-      saveChat();
       const tools = [...new Set(data.tools || [])].map(t => "<span>" + esc(TOOL_NAMES[t] || t) + "</span>").join("");
       wait.innerHTML = fmt(data.answer) + (tools ? '<div class="tools">' + tools + "</div>" : "");
       if (Array.isArray(data.places) && data.places.length) renderPlaces(wait, data.places, userLoc);
       if (data.trip && data.trip.origin && data.trip.destination) renderTrip(wait, data.trip);
       if (data.live && Array.isArray(data.live.stops) && data.live.stops.length) renderLive(wait, data.live);
+      // Kullanıcının kendi konumundan başlayan tarif saklanmaz (konum kaydedilmez sözü).
+      const trip = data.trip && !(data.trip.origin && data.trip.origin.kind === "user") ? data.trip : null;
+      transcript.push({ role: "user", content: text.trim() }, { role: "assistant", content: data.answer,
+        places: Array.isArray(data.places) ? data.places : [], trip, live: !!data.live });
+      try { saveChat(); } catch {}
     } catch (e) {
       if (myGen !== gen) return;
       history.pop();
       wait.classList.add("error");
       wait.textContent = e.message === "Failed to fetch" ? "Sunucuya ulaşılamadı. İnternet bağlantını kontrol et." : e.message;
     } finally {
-      busy = false; send.disabled = false; scroll.scrollTop = scroll.scrollHeight; q.focus();
+      if (myGen === gen) { busy = false; send.disabled = false; scroll.scrollTop = scroll.scrollHeight; q.focus(); }
     }
   }
 
-  form.addEventListener("submit", e => { e.preventDefault(); const t = q.value; q.value = ""; q.style.height = ""; ask(t); });
+  form.addEventListener("submit", e => {
+    e.preventDefault(); if (busy || !q.value.trim()) return;
+    const t = q.value; q.value = ""; q.style.height = ""; ask(t);
+  });
   q.addEventListener("keydown", e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); form.requestSubmit(); } });
   q.addEventListener("input", () => { q.style.height = ""; q.style.height = Math.min(q.scrollHeight, 140) + "px"; });
   log.addEventListener("click", e => {
