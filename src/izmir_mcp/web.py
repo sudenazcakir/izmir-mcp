@@ -103,6 +103,27 @@ LOCATION_NOTE = (
     "ve ilçe söylenmediğinde araçlara bu lat/lon değerlerini ver; uzaklıkları kullanıcıya göre söyle."
 )
 
+# Sayfada seçilen arayüz dili. Kullanıcı başka bir dilde yazarsa yine onun dilinde cevap verilir.
+LANG_NOTES = {
+    "en": (
+        "Kullanıcı arayüzü İngilizce kullanıyor. Kullanıcı başka bir dilde yazmadıkça İngilizce cevap ver; "
+        "araçlardan gelen Türkçe notları ve giyim önerilerini İngilizceye çevir. Sayfadaki konum düğmesinin adı "
+        "\"Use my location\"."
+    ),
+}
+
+
+FALLBACKS = {
+    "tr": {"refusal": "Bu soruya cevap veremiyorum. Başka bir şekilde sormayı dener misin?",
+           "empty": "Şu an bir cevap üretemedim, lütfen tekrar dener misin?"},
+    "en": {"refusal": "I can't answer this question. Could you try asking it another way?",
+           "empty": "I couldn't produce an answer right now, could you try again?"},
+}
+
+
+def parse_lang(raw: Any) -> str:
+    return raw if raw in ("tr", "en") else "tr"
+
 
 # Sayfa yalnız kendi kaynağımızdan script çalıştırır; harita karoları OpenStreetMap'ten gelir.
 CSP = "; ".join([
@@ -438,6 +459,7 @@ async def ask_claude(
     settings: Settings,
     history: list[dict[str, Any]],
     location: tuple[float, float] | None = None,
+    lang: str = "tr",
 ) -> dict[str, Any]:
     server: dict[str, Any] = {"type": "url", "url": settings.mcp_public_url, "name": MCP_SERVER_NAME}
     if settings.mcp_api_key:
@@ -454,6 +476,8 @@ async def ask_claude(
     system = SYSTEM_PROMPT
     if location:
         system += "\n\n" + LOCATION_NOTE.format(lat=location[0], lon=location[1])
+    if lang in LANG_NOTES:
+        system += "\n\n" + LANG_NOTES[lang]
     for _ in range(MAX_PAUSE_CONTINUES + 1):
         resp = await client.beta.messages.create(
             model=settings.chat_model,
@@ -484,13 +508,13 @@ async def ask_claude(
                 elif name == WEATHER_TOOL:
                     weather = extract_weather(_result_text(block.content)) or weather
         if resp.stop_reason == "refusal":
-            return {"answer": "Bu soruya cevap veremiyorum. Başka bir şekilde sormayı dener misin?", "tools": tools_used,
+            return {"answer": FALLBACKS.get(lang, FALLBACKS["tr"])["refusal"], "tools": tools_used,
                     "places": [], "trip": None, "live": None, "weather": None}
         if resp.stop_reason != "pause_turn":
             break
         # Uzun araç zinciri yarıda durdu: cevabı olduğu gibi geri verip devam ettir.
         messages = [*messages, {"role": "assistant", "content": resp.content}]
-    answer = "\n\n".join(texts).strip() or "Şu an bir cevap üretemedim, lütfen tekrar dener misin?"
+    answer = "\n\n".join(texts).strip() or FALLBACKS.get(lang, FALLBACKS["tr"])["empty"]
     return {"answer": answer, "tools": tools_used, "places": places, "trip": trip, "live": live, "weather": weather}
 
 
@@ -541,8 +565,9 @@ def create_app(settings: Settings | None = None, client: anthropic.AsyncAnthropi
         if history is None:
             return JSONResponse({"error": f"Geçersiz istek (soru en fazla {MAX_QUESTION_CHARS} karakter)."}, status_code=400)
         location = parse_location(body.get("location")) if isinstance(body, dict) else None
+        lang = parse_lang(body.get("lang")) if isinstance(body, dict) else "tr"
         try:
-            result = await ask_claude(client, settings, history, location)
+            result = await ask_claude(client, settings, history, location, lang)
             if result.get("live"):
                 result["live"]["token"] = signer.sign(result["live"]["stops"])
             return JSONResponse(result)

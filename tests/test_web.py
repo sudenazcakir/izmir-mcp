@@ -119,6 +119,13 @@ def test_chat_refusal_is_friendly():
     assert r.status_code == 200 and "cevap veremiyorum" in r.json()["answer"]
 
 
+def test_chat_refusal_follows_ui_language():
+    client, _ = fake_client(reply(stop="refusal"))
+    with TestClient(create_app(settings(), client)) as tc:
+        r = tc.post("/api/chat", json={"messages": [{"role": "user", "content": "x"}], "lang": "en"})
+    assert r.status_code == 200 and "can't answer" in r.json()["answer"]
+
+
 def test_chat_not_configured():
     with TestClient(create_app(settings(anthropic_api_key=None))) as tc:
         assert tc.post("/api/chat", json={"messages": [{"role": "user", "content": "x"}]}).status_code == 503
@@ -266,6 +273,16 @@ def test_location_goes_to_system_prompt():
         tc.post("/api/chat", json={"messages": [{"role": "user", "content": "x"}], "location": {"lat": 51.5, "lon": 0}})
     assert "38.38810" in msgs.calls[0]["system"] and "27.17520" in msgs.calls[0]["system"]
     assert "konumunu paylaştı" not in msgs.calls[1]["system"]
+
+
+def test_english_ui_asks_for_english_answers():
+    client, msgs = fake_client(*[reply(text("ok")) for _ in range(5)])
+    with TestClient(create_app(settings(), client)) as tc:
+        for lang in ("en", "tr", "<script>", ["en"]):
+            tc.post("/api/chat", json={"messages": [{"role": "user", "content": "x"}], "lang": lang})
+        tc.post("/api/chat", json={"messages": [{"role": "user", "content": "x"}]})
+    assert "İngilizce cevap ver" in msgs.calls[0]["system"]
+    assert all("İngilizce" not in c["system"] for c in msgs.calls[1:])
 
 
 @pytest.mark.parametrize(
