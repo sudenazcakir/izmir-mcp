@@ -467,8 +467,10 @@
     if (liveTimer) { clearInterval(liveTimer); liveTimer = null; document.querySelectorAll(".live").forEach(x => x._status?.("liveStopped", true)); }
     const box = document.createElement("div");
     box.className = "live";
-    const stopName = (live.stops.find(x => x.name) || {}).name || (t("stop") + " " + live.stops[0].id);
-    box.innerHTML = '<div class="live-head"><span>🚏 ' + esc(stopName) + '</span>' + starBtn("stops", stopName) + "</div>" +
+    // Adı gelmeyen durak favoriye numarasıyla girer, böylece iki dilde de aynı favori olur.
+    const namedStop = (live.stops.find(x => x.name) || {}).name, stopKey = namedStop || String(live.stops[0].id);
+    const stopLabel = () => namedStop || (t("stop") + " " + live.stops[0].id);
+    box.innerHTML = '<div class="live-head"><span>🚏 ' + esc(stopLabel()) + '</span>' + starBtn("stops", stopKey) + "</div>" +
       '<div class="map" role="img" aria-label="' + t("liveMap") + '"></div>' +
       '<div class="status"><span class="dot"></span><span> ' + t("liveEvery") + '</span></div><div class="rows"></div>';
     el.appendChild(box);
@@ -480,7 +482,11 @@
     const statusText = () => " " + t(statusKey) + (statusAt ? " " + statusAt.toLocaleTimeString(lang === "tr" ? "tr-TR" : "en-GB") : "");
     box._status = (key, off, at) => { statusKey = key; statusAt = at || null; status.classList.toggle("off", !!off);
       status.lastChild.textContent = statusText(); };
+    const stopMarkers = [];
+    const stopPopup = st => "<b>" + esc(st.name || t("stop")) + "</b><br>" + t("stopNo") + " " + esc(st.id);
     box._i18n = () => {
+      box.querySelector(".live-head span").textContent = "🚏 " + stopLabel();
+      stopMarkers.forEach(([m, st]) => m.setPopupContent(stopPopup(st)));
       mapEl.setAttribute("aria-label", t("liveMap")); status.lastChild.textContent = statusText(); drawRows();
       for (const b of buses) markers.get(busKey(b))?.setPopupContent("<b>" + esc(b.line) + "</b> " + esc(b.name) + "<br>" + esc(etaText(b)));
     };
@@ -534,13 +540,12 @@
         maxZoom: 19, attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
       }).addTo(map);
       layer = L.layerGroup().addTo(map);
-      live.stops.forEach(st => { if (st.lat != null) L.marker([st.lat, st.lon], { icon: L.divIcon({ className: "",
+      live.stops.forEach(st => { if (st.lat != null) { const m = L.marker([st.lat, st.lon], { icon: L.divIcon({ className: "",
         html: '<div class="stop-pin">🚏</div>', iconSize: [22, 22], iconAnchor: [11, 11] }), title: st.name || st.id })
-        .addTo(map).bindPopup("<b>" + esc(st.name || t("stop")) + "</b><br>" + t("stopNo") + " " + esc(st.id)); });
+        .addTo(map); m.bindPopup(stopPopup(st)); stopMarkers.push([m, st]); } });
       drawBuses(true); fitAll();
       if (!box.dataset.quiet) scroll.scrollTop = scroll.scrollHeight;
     }).catch(() => { mapEl.remove(); });
-    return box;
 
     const started = Date.now();
     let myTimer = null;  // bu kartın zamanlayıcısı; eski kartın geç gelen cevabı yenisini durdurmasın
@@ -563,6 +568,7 @@
       } catch { box._status("liveFail", true); }
     }
     if (live.token) liveTimer = myTimer = setInterval(refresh, LIVE_EVERY);
+    return box;
   }
 
   function renderPlaces(el, raw, origin, restoredNearMe) {
@@ -688,6 +694,11 @@
       hadLive: "🚌 Bu cevapta canlı otobüs haritası vardı. Güncel konumlar için soruyu tekrar sor.",
       yourFavs: "⭐ Favorilerin", writing: "Cevap yazılıyor",
       errGeneric: "Bir sorun oluştu, tekrar dener misin?", errNet: "Sunucuya ulaşılamadı. İnternet bağlantını kontrol et.",
+      err429: "Çok fazla soru sordun, birkaç dakika sonra tekrar dene.",
+      err400: "Geçersiz istek (soru çok uzun olabilir).",
+      err503: "Asistan şu an çok yoğun, biraz sonra tekrar dene.",
+      err502: "Asistana şu an ulaşılamıyor, biraz sonra tekrar dene.",
+      err500: "Beklenmeyen bir sorun oluştu, tekrar dener misin?",
     },
     en: {
       menu: "Chats and favorites", tagline: "Buses, directions, pharmacies and weather from open data", city: "City",
@@ -1068,7 +1079,10 @@
       }).catch(err => { netDown = true; throw err; });
       const data = await res.json().catch(() => ({}));
       if (myGen !== gen) return;  // kullanıcı bu arada başka sohbete geçti: cevabı oraya yazma
-      if (!res.ok || typeof data.answer !== "string") throw new Error(lang === "tr" && data.error ? data.error : (I18N[lang]["err" + res.status] || t("errGeneric")));
+      if (!res.ok || typeof data.answer !== "string") {
+        const key = I18N.en["err" + res.status] ? "err" + res.status : "errGeneric";
+        throw Object.assign(new Error(lang === "tr" && data.error ? data.error : t(key)), { key });
+      }
       history.push({ role: "assistant", content: data.answer });
       const toolList = [...new Set((Array.isArray(data.tools) ? data.tools : []).filter(x => typeof x === "string"))];
       wait.innerHTML = fmt(data.answer) + (toolList.length ? '<div class="tools">' + toolChips(toolList) + "</div>" : "");
@@ -1086,6 +1100,8 @@
       if (myGen !== gen) return;
       history.length = base;  // cevapsız kalan soruyu da geri al
       wait.classList.add("error");
+      const key = netDown ? "errNet" : e.key;
+      if (key) wait.dataset.i18n = key;  // dil değişince hata da çevrilsin
       wait.textContent = netDown ? t("errNet") : e.message;
     } finally {
       if (myGen === gen) { busy = false; send.disabled = false; scroll.scrollTop = scroll.scrollHeight; q.focus(); }
