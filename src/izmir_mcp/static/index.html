@@ -224,7 +224,8 @@
   .place .num { flex: none; width: 22px; height: 22px; border-radius: 50%; background: var(--accent); color: var(--accent-ink);
     font-size: 12px; font-weight: 700; display: inline-flex; align-items: center; justify-content: center; }
   .place .name { font-weight: 600; flex: 1 1 9em; min-width: 0; overflow-wrap: anywhere; }
-  .place .dist { margin-left: auto; color: var(--muted); font-size: 13px; white-space: nowrap; }
+  .place .end, .bus-row .btns { display: flex; align-items: center; gap: 8px; flex: none; margin-left: auto; }
+  .place .dist { color: var(--muted); font-size: 13px; white-space: nowrap; }
   .place .addr { color: var(--muted); font-size: 13.5px; margin: 2px 0 0 32px; }
   .place .acts { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0 0 32px; }
   .place .acts a { font-size: 13px; text-decoration: none; color: var(--accent); border: 1px solid var(--line);
@@ -406,7 +407,7 @@
     const h = Math.sin(dLat / 2) ** 2 + Math.cos(a.lat * r) * Math.cos(b.lat * r) * Math.sin(dLon / 2) ** 2;
     return 12742 * Math.asin(Math.sqrt(h));
   }
-  const fmtKm = d => d == null ? "" : d < 1 ? Math.round(d * 1000) + " m" : (lang === "tr" ? d.toFixed(1).replace(".", ",") : d.toFixed(1)) + " km";
+  const fmtKm = d => d == null ? "" : d < 1 ? Math.round(d * 1000) + "\u00a0m" : (lang === "tr" ? d.toFixed(1).replace(".", ",") : d.toFixed(1)) + "\u00a0km";
   const ll = p => encodeURIComponent(p.lat + "," + p.lon);
   const showUrl = p => "https://www.google.com/maps/search/?api=1&query=" + ll(p);
   const routeUrl = p => "https://www.google.com/maps/dir/?api=1&destination=" + ll(p) +
@@ -501,9 +502,9 @@
         '<div class="bus-row' + (busKey(b) === follow ? " on" : "") + '" data-k="' + esc(busKey(b)) + '">' +
         '<span class="ln">' + esc(b.line) + '</span><span class="info">' + esc(etaText(b)) + (b.accessible ? " · ♿" : "") +
         "<small>" + esc(b.name) + "</small></span>" +
-        starBtn("lines", b.line, b.name) +
+        '<span class="btns">' + starBtn("lines", b.line, b.name) +
         (b.lat != null ? "<button type=\"button\" class=\"follow\">" + (busKey(b) === follow ? t("following") : t("follow")) + "</button>" : "") +
-        "</div>").join("") : '<div class="map-note">' + t("noBus") + "</div>";
+        "</span></div>").join("") : '<div class="map-note">' + t("noBus") + "</div>";
       rowsEl.style.display = "grid"; rowsEl.style.gap = "6px";
       if (fKey) [...rowsEl.querySelectorAll(".bus-row")].find(r => r.dataset.k === fKey)?.querySelector("." + fCls)?.focus();
     }
@@ -587,7 +588,8 @@
     box.className = "places";
     box.innerHTML = places.map((p, i) =>
       '<div class="place"><div class="top"><span class="num">' + (i + 1) + '</span><span class="name">' + esc(p.name) +
-      '</span><span class="dist">' + esc(fmtKm(p.d)) + "</span>" + starBtn("pharmacies", p.name + "|" + (p.address || ""), p) + "</div>" +
+      '</span><span class="end">' + (p.d != null ? '<span class="dist">' + esc(fmtKm(p.d)) + "</span>" : "") +
+      starBtn("pharmacies", p.name + "|" + (p.address || ""), p) + "</span></div>" +
       (p.address ? '<div class="addr">' + esc(p.address) + "</div>" : "") +
       '<div class="acts">' +
       (p.phone ? '<a href="tel:' + esc(p.phone.replace(/[^\d+]/g, "")) + '">' + t("call") + "</a>" : "") +
