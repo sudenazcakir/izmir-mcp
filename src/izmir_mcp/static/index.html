@@ -220,10 +220,10 @@
   .loc-btn[aria-pressed="true"] { border-color: var(--accent); background: var(--accent-soft); }
   .places { white-space: normal; margin-top: 12px; display: grid; gap: 8px; }
   .place { border: 1px solid var(--line); border-radius: 14px; padding: 10px 12px; background: var(--solid); }
-  .place .top { display: flex; gap: 10px; align-items: baseline; }
+  .place .top { display: flex; flex-wrap: wrap; gap: 10px; align-items: baseline; }
   .place .num { flex: none; width: 22px; height: 22px; border-radius: 50%; background: var(--accent); color: var(--accent-ink);
     font-size: 12px; font-weight: 700; display: inline-flex; align-items: center; justify-content: center; }
-  .place .name { font-weight: 600; min-width: 0; overflow-wrap: anywhere; }
+  .place .name { font-weight: 600; flex: 1 1 9em; min-width: 0; overflow-wrap: anywhere; }
   .place .dist { margin-left: auto; color: var(--muted); font-size: 13px; white-space: nowrap; }
   .place .addr { color: var(--muted); font-size: 13.5px; margin: 2px 0 0 32px; }
   .place .acts { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0 0 32px; }
@@ -256,7 +256,8 @@
     padding: 8px 10px; background: var(--solid); font-size: 14px; }
   .bus-row .ln { flex: none; min-width: 42px; text-align: center; font-weight: 700; border-radius: 8px;
     padding: 2px 6px; background: #f59e0b; color: #1f1300; }
-  .bus-row .info { flex: 1; min-width: 0; }
+  .bus-row { flex-wrap: wrap; }
+  .bus-row .info { flex: 1 1 9em; min-width: 0; }
   .bus-row .info small { display: block; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .bus-row button.follow { font: inherit; font-size: 13px; cursor: pointer; color: var(--accent); background: var(--surface);
     border: 1px solid var(--line); border-radius: 999px; padding: 3px 10px; white-space: nowrap; }
