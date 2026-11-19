@@ -113,6 +113,14 @@ LANG_NOTES = {
 }
 
 
+FALLBACKS = {
+    "tr": {"refusal": "Bu soruya cevap veremiyorum. Başka bir şekilde sormayı dener misin?",
+           "empty": "Şu an bir cevap üretemedim, lütfen tekrar dener misin?"},
+    "en": {"refusal": "I can't answer this question. Could you try asking it another way?",
+           "empty": "I couldn't produce an answer right now, could you try again?"},
+}
+
+
 def parse_lang(raw: Any) -> str:
     return raw if raw in ("tr", "en") else "tr"
 
@@ -500,13 +508,13 @@ async def ask_claude(
                 elif name == WEATHER_TOOL:
                     weather = extract_weather(_result_text(block.content)) or weather
         if resp.stop_reason == "refusal":
-            return {"answer": "Bu soruya cevap veremiyorum. Başka bir şekilde sormayı dener misin?", "tools": tools_used,
+            return {"answer": FALLBACKS.get(lang, FALLBACKS["tr"])["refusal"], "tools": tools_used,
                     "places": [], "trip": None, "live": None, "weather": None}
         if resp.stop_reason != "pause_turn":
             break
         # Uzun araç zinciri yarıda durdu: cevabı olduğu gibi geri verip devam ettir.
         messages = [*messages, {"role": "assistant", "content": resp.content}]
-    answer = "\n\n".join(texts).strip() or "Şu an bir cevap üretemedim, lütfen tekrar dener misin?"
+    answer = "\n\n".join(texts).strip() or FALLBACKS.get(lang, FALLBACKS["tr"])["empty"]
     return {"answer": answer, "tools": tools_used, "places": places, "trip": trip, "live": live, "weather": weather}
 
 

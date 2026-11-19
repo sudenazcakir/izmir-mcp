@@ -246,7 +246,7 @@
     padding: 11px 14px; background: linear-gradient(135deg, var(--accent), var(--accent-2)); color: var(--accent-ink); }
   .trip .map { height: 200px; }
   .pin.b { background: #c2410c; }
-  .live { white-space: normal; margin-top: 12px; display: grid; gap: 8px; }
+  .live { white-space: normal; margin-top: 12px; display: grid; gap: 8px; grid-template-columns: minmax(0, 1fr); }
   .live .map { height: 260px; }
   .live .status { font-size: 12.5px; color: var(--muted); display: flex; align-items: center; gap: 6px; }
   .live .dot { width: 8px; height: 8px; border-radius: 50%; background: #16a34a; animation: blink 2s infinite; }
@@ -442,6 +442,7 @@
     el.appendChild(box);
     const mapEl = box.querySelector(".map");
     loadLeaflet().then(() => {
+      if (!box.isConnected) return;  // dil değişince kart yeniden çizildiyse eski kutuya harita kurma
       const map = box._map = L.map(mapEl, { scrollWheelZoom: false });
       L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
         maxZoom: 19, attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
@@ -460,7 +461,7 @@
   // ---- Canlı otobüs haritası: yalnız en son kart canlıdır; 15 sn'de bir /api/live, en fazla 10 dk.
   const LIVE_EVERY = 15000, LIVE_FOR = 10 * 60 * 1000;
   let liveTimer = null;
-  const etaText = b => (b.eta != null ? "~" + b.eta + " " + t("min") : "") + (b.stops_left != null ? " · " + b.stops_left + " " + t("stopsLeft") : "");
+  const etaText = b => (b.eta != null ? "~" + b.eta + " " + t("min") : "") + (b.stops_left != null ? " · " + b.stops_left + " " + t(b.stops_left === 1 ? "stopLeft" : "stopsLeft") : "");
   const busKey = b => (b.bus_id ?? "") + ":" + b.line;
 
   function renderLive(el, live) {
@@ -535,6 +536,7 @@
 
     drawRows();
     loadLeaflet().then(() => {
+      if (!box.isConnected) return;  // dil değişince kart yeniden çizildiyse eski kutuya harita kurma
       map = L.map(mapEl, { scrollWheelZoom: false });
       L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
         maxZoom: 19, attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
@@ -596,6 +598,7 @@
     el.appendChild(box);
     const mapEl = box.querySelector(".map");
     loadLeaflet().then(() => {
+      if (!box.isConnected) return;  // dil değişince kart yeniden çizildiyse eski kutuya harita kurma
       const map = box._map = L.map(mapEl, { scrollWheelZoom: false });
       L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
         maxZoom: 19, attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
@@ -677,7 +680,7 @@
       ferry: "⛴️ Vapur", nearStart: " (başlangıca yakın)", nearEnd: " (varışa yakın)", straight: "kuş uçuşu",
       tripMap: "Başlangıç ve varış haritası", compare: "🚍 Toplu taşıma seçeneklerini karşılaştır",
       tripNote: "Google Haritalar seçenekleri sürelerine göre sıralar, en hızlısı en üstte.",
-      min: "dk", stopsLeft: "durak", stop: "Durak", stopNo: "Durak no:", liveStopped: "Canlı takip durdu (yeni bir soru soruldu).",
+      min: "dk", stopsLeft: "durak", stopLeft: "durak", stop: "Durak", stopNo: "Durak no:", liveStopped: "Canlı takip durdu (yeni bir soru soruldu).",
       liveMap: "Otobüslerin canlı konumu", liveEvery: "Canlı · 15 saniyede bir güncellenir", following: "Takipte",
       follow: "📍 Takip et", noBus: "Şu an bu durağa yaklaşan otobüs görünmüyor.",
       live10: "Canlı takip 10 dakika sonra durdu. Güncel durum için tekrar sor.",
@@ -729,7 +732,7 @@
       ferry: "⛴️ Ferry", nearStart: " (near the start)", nearEnd: " (near the destination)", straight: "straight line",
       tripMap: "Map of start and destination", compare: "🚍 Compare public transport options",
       tripNote: "Google Maps sorts the options by travel time, fastest first.",
-      min: "min", stopsLeft: "stops", stop: "Stop", stopNo: "Stop no.", liveStopped: "Live tracking stopped (a new question was asked).",
+      min: "min", stopsLeft: "stops", stopLeft: "stop", stop: "Stop", stopNo: "Stop no.", liveStopped: "Live tracking stopped (a new question was asked).",
       liveMap: "Live bus positions", liveEvery: "Live · updates every 15 seconds", following: "Following",
       follow: "📍 Follow", noBus: "No buses are approaching this stop right now.",
       live10: "Live tracking stopped after 10 minutes. Ask again for the latest.",
@@ -777,9 +780,11 @@
   function loadFavs() {
     const o = store.get("favs", {}), out = {};
     for (const kind of ["stops", "lines", "pharmacies", "weather"]) {
-      out[kind] = (o && Array.isArray(o[kind]) ? o[kind] : []).filter(f => f && str(f.key)).slice(0, FAV_MAX).map(f =>
+      const seen = new Set();
+      out[kind] = (o && Array.isArray(o[kind]) ? o[kind] : []).filter(f => f && str(f.key)).map(f =>
         ({ key: kind === "stops" ? f.key.replace(/^(Durak|Stop) (\d+)$/, "$2") : f.key, name: str(f.name) ? f.name : null, address: str(f.address) ? f.address : null,
-           phone: str(f.phone) ? f.phone : null, lat: num(f.lat) ? f.lat : null, lon: num(f.lon) ? f.lon : null }));
+           phone: str(f.phone) ? f.phone : null, lat: num(f.lat) ? f.lat : null, lon: num(f.lon) ? f.lon : null }))
+        .filter(f => !seen.has(f.key) && seen.add(f.key)).slice(0, FAV_MAX);  // eski "Durak N" kayıtları "N" ile çakışmasın
     }
     return out;
   }
@@ -856,7 +861,7 @@
   // Favoriye basınca sorulan soru, seçili dilde.
   const ASK = {
     tr: {
-      stops: f => (/^\d+$/.test(f.key) ? f.key + " numaralı" : f.key) + " durağına yaklaşan otobüsler nerede?",
+      stops: f => /^\d+$/.test(f.key) ? f.key + " numaralı durağa yaklaşan otobüsler nerede?" : f.key + " durağına yaklaşan otobüsler nerede?",
       lines: f => f.key + " hattında güncel bir duyuru var mı?",
       pharmacies: f => { const n = f.name || f.key.split("|")[0]; return n + (/eczane/i.test(n) ? "" : " eczanesi") +
         (f.address ? " (" + f.address + ")" : "") + " bugün nöbetçi mi? Değilse aynı bölgedeki nöbetçi eczaneler hangileri?"; },

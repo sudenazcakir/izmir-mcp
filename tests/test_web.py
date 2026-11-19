@@ -119,6 +119,13 @@ def test_chat_refusal_is_friendly():
     assert r.status_code == 200 and "cevap veremiyorum" in r.json()["answer"]
 
 
+def test_chat_refusal_follows_ui_language():
+    client, _ = fake_client(reply(stop="refusal"))
+    with TestClient(create_app(settings(), client)) as tc:
+        r = tc.post("/api/chat", json={"messages": [{"role": "user", "content": "x"}], "lang": "en"})
+    assert r.status_code == 200 and "can't answer" in r.json()["answer"]
+
+
 def test_chat_not_configured():
     with TestClient(create_app(settings(anthropic_api_key=None))) as tc:
         assert tc.post("/api/chat", json={"messages": [{"role": "user", "content": "x"}]}).status_code == 503
