@@ -110,8 +110,17 @@
   .foot { max-width: 800px; margin: 6px auto 0; font-size: 11.5px; color: var(--muted); text-align: center; }
   @media (max-width: 520px) {
     header p { display: none; }
-    header h1 { font-size: 16px; white-space: nowrap; }
+    header h1 { font-size: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .logo { width: 36px; height: 36px; }
+    .lang::before { content: none; }
+    .lang select { padding: 6px 10px; }
+  }
+  @media (max-width: 380px) {
+    header .logo { display: none; }
+    header h1 { font-size: 15px; }
+    .city select { width: 86px; padding: 6px 20px 6px 24px; font-size: 13px; }
+    .city::before { left: 7px; }
+    .city::after { right: 8px; }
   }
   .icon-btn { flex: none; width: 38px; height: 38px; border-radius: 12px; border: 1px solid var(--line); background: var(--solid);
     color: var(--fg); cursor: pointer; display: grid; place-items: center; font-size: 17px; position: relative; }
@@ -356,8 +365,8 @@
 <form id="form">
   <div class="composer">
     <div class="loc-row">
-      <button class="loc-btn" id="loc" type="button" aria-pressed="false" data-i18n="locUse">📍 Konumumu kullan</button>
-      <span id="locmsg" data-i18n="locHint">Yakındaki eczane, durak ve yol tarifi için</span>
+      <button class="loc-btn" id="loc" type="button" aria-pressed="false">📍 Konumumu kullan</button>
+      <span id="locmsg">Yakındaki eczane, durak ve yol tarifi için</span>
     </div>
     <div class="bar">
       <textarea id="q" rows="1" maxlength="1000" placeholder="Sorunu yaz…" aria-label="Soru" data-i18n-attr="placeholder:qPh,aria-label:qLabel"></textarea>
@@ -374,18 +383,19 @@
   let lang = "tr";  // "tr" | "en"; aşağıda cihazdaki seçimden ya da tarayıcı dilinden okunur
 
   const locBtn = document.getElementById("loc"), locMsg = document.getElementById("locmsg");
+  let locState = "locHint";  // dil değişince konum mesajı kaybolmasın diye hangi mesajın gösterildiği tutulur
+  const showLoc = st => { if (st) locState = st; locMsg.textContent = t(locState);
+    locBtn.textContent = t(userLoc ? "locOn" : "locUse"); };
   locBtn.addEventListener("click", () => {
     if (userLoc) {
-      userLoc = null; locBtn.setAttribute("aria-pressed", "false"); locBtn.textContent = t("locUse");
-      locMsg.textContent = t("locOff"); return;
+      userLoc = null; locBtn.setAttribute("aria-pressed", "false"); showLoc("locOff"); return;
     }
-    if (!navigator.geolocation) { locMsg.textContent = t("locNo"); return; }
-    locMsg.textContent = t("locGetting");
+    if (!navigator.geolocation) { showLoc("locNo"); return; }
+    showLoc("locGetting");
     navigator.geolocation.getCurrentPosition(pos => {
       userLoc = { lat: pos.coords.latitude, lon: pos.coords.longitude };
-      locBtn.setAttribute("aria-pressed", "true"); locBtn.textContent = t("locOn");
-      locMsg.textContent = t("locShared");
-    }, () => { locMsg.textContent = t("locDenied"); },
+      locBtn.setAttribute("aria-pressed", "true"); showLoc("locShared");
+    }, () => { showLoc("locDenied"); },
     { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 });
   });
 
@@ -415,18 +425,18 @@
   }
 
   const SYS = () => ({ metro: "🚇 Metro", izban: "🚆 İZBAN", ferry: t("ferry") });
-  function renderTrip(el, t) {
+  function renderTrip(el, trip) {
     const box = document.createElement("div");
     box.className = "trip";
-    const chips = (t.nearby || []).map(n => "<span>" + esc((SYS()[n.system] || n.system) + ": " + n.name +
+    const chips = (trip.nearby || []).map(n => "<span>" + esc((SYS()[n.system] || n.system) + ": " + n.name +
       (n.end === "origin" ? t("nearStart") : t("nearEnd"))) + "</span>").join("");
     box.innerHTML =
-      '<div class="ends"><div><b>A</b>' + esc(t.origin.name) + '</div><div><b>B</b>' + esc(t.destination.name) +
-      (t.straight_km != null ? ' <span class="map-note">· ' + t("straight") + " " + esc(fmtKm(t.straight_km)) + "</span>" : "") +
+      '<div class="ends"><div><b>A</b>' + esc(trip.origin.name) + '</div><div><b>B</b>' + esc(trip.destination.name) +
+      (trip.straight_km != null ? ' <span class="map-note">· ' + t("straight") + " " + esc(fmtKm(trip.straight_km)) + "</span>" : "") +
       "</div></div>" + (chips ? '<div class="chips">' + chips + "</div>" : "") +
       '<div class="map" role="img" aria-label="' + t("tripMap") + '"></div>' +
-      (str(t.maps_url) && t.maps_url.startsWith("https://www.google.com/maps/")
-        ? '<a class="go" href="' + esc(t.maps_url) + '" target="_blank" rel="noopener">' + t("compare") + "</a>" : "") +
+      (str(trip.maps_url) && trip.maps_url.startsWith("https://www.google.com/maps/")
+        ? '<a class="go" href="' + esc(trip.maps_url) + '" target="_blank" rel="noopener">' + t("compare") + "</a>" : "") +
       '<div class="map-note">' + t("tripNote") + "</div>";
     el.appendChild(box);
     const mapEl = box.querySelector(".map");
@@ -438,8 +448,8 @@
       const pin = (p, label, cls) => L.marker([p.lat, p.lon], { icon: L.divIcon({ className: "",
         html: '<div class="pin ' + cls + '">' + label + "</div>", iconSize: [26, 26], iconAnchor: [13, 13] }), title: p.name })
         .addTo(map).bindPopup("<b>" + esc(p.name) + "</b>");
-      pin(t.origin, "A", ""); pin(t.destination, "B", "b");
-      map.fitBounds([[t.origin.lat, t.origin.lon], [t.destination.lat, t.destination.lon]],
+      pin(trip.origin, "A", ""); pin(trip.destination, "B", "b");
+      map.fitBounds([[trip.origin.lat, trip.origin.lon], [trip.destination.lat, trip.destination.lon]],
         { paddingTopLeft: [56, 36], paddingBottomRight: [32, 36], maxZoom: 15 });
       scroll.scrollTop = scroll.scrollHeight;
     }).catch(() => { mapEl.remove(); });
@@ -620,7 +630,7 @@
     },
     del(k) { delete mem[k]; unsaved.delete(k); try { localStorage.removeItem("izm:" + k); } catch {} },
     wipe() { unsaved.clear(); for (const k of Object.keys(mem)) delete mem[k];
-      try { Object.keys(localStorage).filter(k => k.startsWith("izm:")).forEach(k => localStorage.removeItem(k)); } catch {} },
+      try { Object.keys(localStorage).filter(k => k.startsWith("izm:") && k !== "izm:lang").forEach(k => localStorage.removeItem(k)); } catch {} },
   };
   // ---- Dil: Türkçe ve İngilizce. İlk açılışta tarayıcı diline bakılır, seçim bu cihazda saklanır.
   const I18N = {
@@ -733,7 +743,8 @@
   {
     const saved = store.get("lang", null);
     lang = saved === "tr" || saved === "en" ? saved
-      : ((navigator.languages || [navigator.language || ""]).some(l => /^tr\b/i.test(l)) ? "tr" : "en");
+      : (((navigator.languages && navigator.languages.length ? navigator.languages : [navigator.language || ""])
+          .find(l => /^(tr|en)\b/i.test(l)) || "en").slice(0, 2).toLowerCase() === "tr" ? "tr" : "en");
   }
   const FAV_MAX = 30, CHAT_MAX = 20, CHAT_MSGS = 40;
   // Saklanan veri elle ya da eski bir sürümle bozulmuş olabilir: biçimi tutmayan kayıtlar atlanır.
@@ -757,7 +768,7 @@
   // Hava cevabının altında: bu ilçeyi favorilere ekle (kullanıcının kendi konumu buraya hiç gelmez).
   function renderWeatherFav(el, place) {
     const box = document.createElement("div"); box.className = "wx-fav";
-    box.innerHTML = "<span>🌤️ " + t("wxFav").replace("{p}", "<b>" + esc(place) + "</b>") + "</span>" + starBtn("weather", place, place);
+    box.innerHTML = "<span>🌤️ " + t("wxFav").replace("{p}", () => "<b>" + esc(place) + "</b>") + "</span>" + starBtn("weather", place, place);
     el.appendChild(box);
   }
   function starBtn(kind, key, extra) {
@@ -879,7 +890,7 @@
         (!open ? "" : items.length ? items.map(([k, f, i]) => { const n = favName(k, f);
           return '<div class="row sub"><button class="row-go" type="button" data-ask="' + k + '" data-i="' + i + '" title="' + t("askTitle") + " " +
             esc(askFor[k](f)) + '">' + (id === "transit" ? ICONS[k] : "") + '<span class="t">' + esc(n) + "</span></button>" +
-            delBtn(t("delFav").replace("{n}", n), 'data-del="' + k + '" data-i="' + i + '"') + "</div>"; }).join("")
+            delBtn(t("delFav").replace("{n}", () => n), 'data-del="' + k + '" data-i="' + i + '"') + "</div>"; }).join("")
           : '<div class="empty sub">' + hint + "</div>");
     }).join("") || '<div class="empty">' + t("noFavMatch") + "</div>";
     const chats = loadChats().map((c, i) => [c, i]).filter(([c]) => hit(c.title));
@@ -888,7 +899,7 @@
       (chats.length ? chats.map(([c, i]) => { const on = c.id === chatId;
         return '<div class="row' + (on ? " on" : "") + '"><button class="row-go" type="button" data-chat="' + i + '"' +
           (on ? ' aria-current="true"' : "") + ' title="' + esc(c.title) + '"><span class="t">' + esc(c.title) + "</span></button>" +
-          delBtn(t("delChat").replace("{n}", c.title), 'data-delchat="' + i + '"') + "</div>"; }).join("")
+          delBtn(t("delChat").replace("{n}", () => c.title), 'data-delchat="' + i + '"') + "</div>"; }).join("")
         : '<div class="empty">' + (needle ? t("noChatMatch") : t("chatsHint")) + "</div>");
     for (const b of drawerEl.querySelectorAll(".sec-head")) b.setAttribute("aria-expanded", !!(ui[b.dataset.sec] || needle));
     const badge = document.getElementById("fav-count"); badge.hidden = !total; badge.textContent = total;
@@ -1019,22 +1030,24 @@
     history.push({ role: "user", content: text.trim() });
     add("user", esc(text.trim()));
     const wait = add("bot", '<span class="dots" aria-label="' + t("writing") + '"><span></span><span></span><span></span></span>');
+    let netDown = false;
     try {
       const res = await fetch("/api/chat", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ messages: history.slice(-12), lang, ...(userLoc ? { location: userLoc } : {}) }),
-      });
+      }).catch(err => { netDown = true; throw err; });
       const data = await res.json().catch(() => ({}));
       if (myGen !== gen) return;  // kullanıcı bu arada başka sohbete geçti: cevabı oraya yazma
       if (!res.ok || typeof data.answer !== "string") throw new Error(lang === "tr" && data.error ? data.error : (I18N[lang]["err" + res.status] || t("errGeneric")));
       history.push({ role: "assistant", content: data.answer });
       const tools = [...new Set(data.tools || [])].map(x => "<span>" + esc(TOOL_NAMES[lang][x] || x) + "</span>").join("");
       wait.innerHTML = fmt(data.answer) + (tools ? '<div class="tools">' + tools + "</div>" : "");
-      if (Array.isArray(data.places) && data.places.length) renderPlaces(wait, data.places, userLoc);
-      if (data.trip && data.trip.origin && data.trip.destination) renderTrip(wait, data.trip);
-      if (data.live && Array.isArray(data.live.stops) && data.live.stops.length) renderLive(wait, data.live);
+      // Bir kart çizilemezse cevap metni yine kalsın ve kaydedilsin.
+      try { if (Array.isArray(data.places) && data.places.length) renderPlaces(wait, data.places, userLoc); } catch (err) { console.error(err); }
+      try { if (data.trip && data.trip.origin && data.trip.destination) renderTrip(wait, data.trip); } catch (err) { console.error(err); }
+      try { if (data.live && Array.isArray(data.live.stops) && data.live.stops.length) renderLive(wait, data.live); } catch (err) { console.error(err); }
       const wx = data.weather && typeof data.weather.place === "string" ? { place: data.weather.place.slice(0, 60) } : null;
-      if (wx) renderWeatherFav(wait, wx.place);
+      try { if (wx) renderWeatherFav(wait, wx.place); } catch (err) { console.error(err); }
       // Konum saklanmaz: kullanıcının konumundan başlayan tarif ve konuma göre ölçülen uzaklıklar kayda girmez.
       const trip = data.trip && !(data.trip.origin && data.trip.origin.kind === "user") ? data.trip : null;
       const places = Array.isArray(data.places) ? data.places.map(p => usedLoc ? { ...p, distance_km: null } : p) : [];
@@ -1045,7 +1058,7 @@
       if (myGen !== gen) return;
       history.length = base;  // cevapsız kalan soruyu da geri al
       wait.classList.add("error");
-      wait.textContent = e.message === "Failed to fetch" || e instanceof TypeError ? t("errNet") : e.message;
+      wait.textContent = netDown ? t("errNet") : e.message;
     } finally {
       if (myGen === gen) { busy = false; send.disabled = false; scroll.scrollTop = scroll.scrollHeight; q.focus(); }
     }
@@ -1064,11 +1077,16 @@
   const langSel = document.getElementById("lang");
   function setLang(l) {
     lang = l; document.documentElement.lang = l; langSel.value = l;
-    applyI18n(document); applyI18n(welcomeTpl);
-    if (userLoc) locBtn.textContent = t("locOn");
+    applyI18n(document); applyI18n(welcomeTpl); showLoc();
     drawDrawer(); drawHomeFavs(); refreshStars();
+    // Açık sohbetin kartları da yeni dilde çizilsin (cevap beklenirken ya da canlı harita açıkken dokunma).
+    const c = chatId && !busy && !liveTimer && loadChats().find(x => x.id === chatId);
+    if (c) openChat(c);
   }
   langSel.addEventListener("change", () => { store.set("lang", langSel.value); setLang(langSel.value); });
+  window.addEventListener("storage", e => {
+    if (e.key === "izm:lang") { const l = store.get("lang", null); if ((l === "tr" || l === "en") && l !== lang) setLang(l); }
+  });
   setLang(lang);
   { const id = cur.get(), c = id && loadChats().find(x => x.id === id); if (c) openChat(c); }
 })();
