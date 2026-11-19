@@ -268,6 +268,15 @@ def test_location_goes_to_system_prompt():
     assert "konumunu paylaştı" not in msgs.calls[1]["system"]
 
 
+def test_english_ui_asks_for_english_answers():
+    client, msgs = fake_client(reply(text("ok")), reply(text("ok")), reply(text("ok")))
+    with TestClient(create_app(settings(), client)) as tc:
+        for lang in ("en", "tr", "<script>"):
+            tc.post("/api/chat", json={"messages": [{"role": "user", "content": "x"}], "lang": lang})
+    assert "İngilizce cevap ver" in msgs.calls[0]["system"]
+    assert "İngilizce" not in msgs.calls[1]["system"] and "İngilizce" not in msgs.calls[2]["system"]
+
+
 @pytest.mark.parametrize(
     "raw, ok",
     [
