@@ -203,7 +203,7 @@
   .wx-fav span { flex: 1; min-width: 0; }
   .wx-fav b { color: var(--fg); }
   .live-head { display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 14px; }
-  .live-head span { flex: 1; min-width: 0; }
+  .live-head span { flex: 1; min-width: 0; overflow-wrap: anywhere; }
   .favs-home { display: grid; gap: 8px; }
   .favs-home h3 { margin: 0; font-size: 13px; color: var(--muted); font-weight: 600; }
   .chips-row { display: flex; flex-wrap: wrap; gap: 6px; }
@@ -442,7 +442,7 @@
     el.appendChild(box);
     const mapEl = box.querySelector(".map");
     loadLeaflet().then(() => {
-      const map = L.map(mapEl, { scrollWheelZoom: false });
+      const map = box._map = L.map(mapEl, { scrollWheelZoom: false });
       L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
         maxZoom: 19, attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
       }).addTo(map);
@@ -464,7 +464,7 @@
   const busKey = b => (b.bus_id ?? "") + ":" + b.line;
 
   function renderLive(el, live) {
-    if (liveTimer) { clearInterval(liveTimer); liveTimer = null; document.querySelectorAll(".live").forEach(x => x._status?.("liveStopped", true)); }
+    if (liveTimer) { clearInterval(liveTimer); liveTimer = null; document.querySelectorAll(".live").forEach(x => { x._stop?.(); x._status?.("liveStopped", true); }); }
     const box = document.createElement("div");
     box.className = "live";
     // Adı gelmeyen durak favoriye numarasıyla girer, böylece iki dilde de aynı favori olur.
@@ -549,7 +549,9 @@
 
     const started = Date.now();
     let myTimer = null;  // bu kartın zamanlayıcısı; eski kartın geç gelen cevabı yenisini durdurmasın
-    const stopMine = () => { clearInterval(myTimer); if (liveTimer === myTimer) liveTimer = null; };
+    let stopped = false;
+    const stopMine = () => { stopped = true; clearInterval(myTimer); if (liveTimer === myTimer) liveTimer = null; };
+    box._stop = () => { stopped = true; };
     async function refresh() {
       if (document.hidden) return;
       if (Date.now() - started > LIVE_FOR) {
@@ -558,14 +560,17 @@
       try {
         const res = await fetch("/api/live", { method: "POST", headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ token: live.token }) });
+        if (stopped) return;
         if (res.status === 403) {
           stopMine(); box._status("liveExpired", true); return;
         }
         if (!res.ok) throw new Error();
-        buses = (await res.json()).buses || [];
+        const fresh = (await res.json()).buses || [];
+        if (stopped) return;  // bu arada yeni bir soru kartı durdurduysa eski cevabı yazma
+        buses = fresh;
         drawRows(); drawBuses(false);
         box._status("liveLast", false, new Date());
-      } catch { box._status("liveFail", true); }
+      } catch { if (!stopped) box._status("liveFail", true); }
     }
     if (live.token) liveTimer = myTimer = setInterval(refresh, LIVE_EVERY);
     return box;
@@ -591,7 +596,7 @@
     el.appendChild(box);
     const mapEl = box.querySelector(".map");
     loadLeaflet().then(() => {
-      const map = L.map(mapEl, { scrollWheelZoom: false });
+      const map = box._map = L.map(mapEl, { scrollWheelZoom: false });
       L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
         maxZoom: 19, attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
       }).addTo(map);
@@ -773,7 +778,7 @@
     const o = store.get("favs", {}), out = {};
     for (const kind of ["stops", "lines", "pharmacies", "weather"]) {
       out[kind] = (o && Array.isArray(o[kind]) ? o[kind] : []).filter(f => f && str(f.key)).slice(0, FAV_MAX).map(f =>
-        ({ key: f.key, name: str(f.name) ? f.name : null, address: str(f.address) ? f.address : null,
+        ({ key: kind === "stops" ? f.key.replace(/^(Durak|Stop) (\d+)$/, "$2") : f.key, name: str(f.name) ? f.name : null, address: str(f.address) ? f.address : null,
            phone: str(f.phone) ? f.phone : null, lat: num(f.lat) ? f.lat : null, lon: num(f.lon) ? f.lon : null }));
     }
     return out;
@@ -792,14 +797,14 @@
     el.appendChild(box); return box;
   }
   // Bir cevabın kartları: dil değişince aynı veriden (konum dahil, kaydedilmemiş haliyle) yerinde yeniden çizilir.
-  const toolChips = list => list.map(x => "<span>" + esc(Object.hasOwn(TOOL_NAMES[lang], x) ? TOOL_NAMES[lang][x] : x) + "</span>").join("");
+  const toolChips = list => list.map(x => "<span>" + esc(Object.prototype.hasOwnProperty.call(TOOL_NAMES[lang], x) ? TOOL_NAMES[lang][x] : x) + "</span>").join("");
   function drawCards(el, c, liveFn) {
     const old = el._els, out = {};
     const put = (k, make) => {
       try {
         const box = make(document.createElement("div")); if (!box) return;
         if (old) box.dataset.quiet = "1";
-        if (old && old[k]) old[k].replaceWith(box); else if (!old) el.appendChild(box);
+        if (old && old[k]) { try { old[k]._map?.remove(); } catch {} old[k].replaceWith(box); } else if (!old) el.appendChild(box);
         out[k] = box;
       } catch (err) { console.error(err); }
     };
@@ -851,14 +856,14 @@
   // Favoriye basınca sorulan soru, seçili dilde.
   const ASK = {
     tr: {
-      stops: f => f.key + " durağına yaklaşan otobüsler nerede?",
+      stops: f => (/^\d+$/.test(f.key) ? f.key + " numaralı" : f.key) + " durağına yaklaşan otobüsler nerede?",
       lines: f => f.key + " hattında güncel bir duyuru var mı?",
       pharmacies: f => { const n = f.name || f.key.split("|")[0]; return n + (/eczane/i.test(n) ? "" : " eczanesi") +
         (f.address ? " (" + f.address + ")" : "") + " bugün nöbetçi mi? Değilse aynı bölgedeki nöbetçi eczaneler hangileri?"; },
       weather: f => "Bugün " + f.key + " için hava nasıl, ne giysem? Sabah, öğle, akşam",
     },
     en: {
-      stops: f => "Where are the buses approaching the " + f.key + " stop?",
+      stops: f => /^\d+$/.test(f.key) ? "Where are the buses approaching stop number " + f.key + "?" : "Where are the buses approaching the " + f.key + " stop?",
       lines: f => "Are there any current announcements for bus line " + f.key + "?",
       pharmacies: f => { const n = f.name || f.key.split("|")[0]; return "Is " + n + (/eczane|pharmacy/i.test(n) ? "" : " pharmacy") +
         (f.address ? " (" + f.address + ")" : "") + " on duty today? If not, which pharmacies are on duty in the same area?"; },
@@ -916,7 +921,8 @@
     return { favs: o.favs !== false, chats: o.chats !== false, q: "",
       cats: Object.fromEntries(CATS.map(([id]) => [id, cats[id] === true])) }; })();
   const saveUi = () => store.set("ui", { favs: ui.favs, chats: ui.chats, cats: ui.cats });
-  const favName = (kind, f) => kind === "pharmacies" ? (f.name || f.key.split("|")[0]) : f.key;
+  const favName = (kind, f) => kind === "pharmacies" ? (f.name || f.key.split("|")[0])
+    : kind === "stops" && /^\d+$/.test(f.key) ? t("stop") + " " + f.key : f.key;
   const delBtn = (label, attrs) => '<button class="row-act" type="button" ' + attrs + ' aria-label="' + esc(label) + '" title="' + t("del") + '">' +
     ICONS.trash + "</button>";
   function drawDrawer() {
@@ -1041,7 +1047,7 @@
     if (!items.length) return;
     const box = document.createElement("div"); box.className = "favs-home";
     box.innerHTML = "<h3>" + t("yourFavs") + "</h3><div class=\"chips-row\">" + items.map(([k, f]) =>
-      '<button type="button" data-q="' + esc(askFor[k](f)) + '">' + (k === "stops" ? "🚏 " : "🚌 ") + esc(f.key) + "</button>").join("") + "</div>";
+      '<button type="button" data-q="' + esc(askFor[k](f)) + '">' + (k === "stops" ? "🚏 " : "🚌 ") + esc(favName(k, f)) + "</button>").join("") + "</div>";
     w.insertBefore(box, w.querySelector(".cats"));
   }
 
@@ -1070,7 +1076,7 @@
     const myGen = gen, base = history.length, usedLoc = !!userLoc;
     history.push({ role: "user", content: text.trim() });
     add("user", esc(text.trim()));
-    const wait = add("bot", '<span class="dots" aria-label="' + t("writing") + '"><span></span><span></span><span></span></span>');
+    const wait = add("bot", '<span class="dots" data-i18n-attr="aria-label:writing" aria-label="' + t("writing") + '"><span></span><span></span><span></span></span>');
     let netDown = false;
     try {
       const res = await fetch("/api/chat", {
@@ -1081,7 +1087,8 @@
       if (myGen !== gen) return;  // kullanıcı bu arada başka sohbete geçti: cevabı oraya yazma
       if (!res.ok || typeof data.answer !== "string") {
         const key = I18N.en["err" + res.status] ? "err" + res.status : "errGeneric";
-        throw Object.assign(new Error(lang === "tr" && data.error ? data.error : t(key)), { key });
+        const srv = typeof data.error === "string" ? data.error.slice(0, 300) : "";
+        throw Object.assign(new Error(lang === "tr" && srv ? srv : t(key)), { key, srv });
       }
       history.push({ role: "assistant", content: data.answer });
       const toolList = [...new Set((Array.isArray(data.tools) ? data.tools : []).filter(x => typeof x === "string"))];
@@ -1101,7 +1108,8 @@
       history.length = base;  // cevapsız kalan soruyu da geri al
       wait.classList.add("error");
       const key = netDown ? "errNet" : e.key;
-      if (key) wait.dataset.i18n = key;  // dil değişince hata da çevrilsin
+      if (key) wait.dataset.err = key;  // dil değişince hata da çevrilsin
+      if (e.srv) wait.dataset.srv = e.srv;
       wait.textContent = netDown ? t("errNet") : e.message;
     } finally {
       if (myGen === gen) { busy = false; send.disabled = false; scroll.scrollTop = scroll.scrollHeight; q.focus(); }
@@ -1126,6 +1134,7 @@
     // Ekrandaki kartlar da yeni dilde, aynı veriden yerinde çizilsin; kaydırma yeri korunur.
     const top = scroll.scrollTop;
     log.querySelectorAll(".msg.bot").forEach(relang);
+    log.querySelectorAll("[data-err]").forEach(x => { x.textContent = lang === "tr" && x.dataset.srv ? x.dataset.srv : t(x.dataset.err); });
     document.querySelectorAll(".live").forEach(x => x._i18n?.());
     scroll.scrollTop = top;
   }
